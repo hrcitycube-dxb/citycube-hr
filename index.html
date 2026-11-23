@@ -28,6 +28,10 @@
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
 [hidden]{display:none!important}
+.offstrip{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:6px;align-items:end}
+.od{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px}.odb{width:100%;max-width:34px;height:64px;background:var(--panel2);border-radius:6px;display:flex;align-items:flex-end;overflow:hidden}.odb i{display:block;width:100%;background:var(--acc);border-radius:6px 6px 0 0}
+.odn{font-weight:600;min-height:16px;font-variant-numeric:tabular-nums}.odl{color:var(--mut);text-align:center;line-height:1.2}.od.we .odb{opacity:.45}.od.td .odl{color:var(--ink);font-weight:600}
+@media(max-width:600px){.offstrip{gap:3px}.odl{font-size:10.5px}}
 body{padding-top:env(safe-area-inset-top)}
 .emp .rail a{justify-content:flex-start;gap:12px}.rail a svg{width:20px;height:20px;flex:none}
 .install{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-color:var(--acc)}
@@ -476,11 +480,30 @@ V.dashboard=()=>{
       </div>
       <div class="panel"><div class="ph"><h2>Leave</h2><a class="btn sm" href="#leave">Open leave</a></div>
         <p class="small"><b>${pend.length}</b> request${pend.length===1?'':'s'} awaiting approval · <b>${onl.length}</b> on leave today</p>
-        ${onl.length?`<ul class="alerts">${onl.map(e=>`<li><span>${esc(e.name)}</span><span class="tag">${esc(onLeaveToday(e))}</span></li>`).join('')}</ul>`:''}
+        ${pend.length?`<ul class="alerts">${pend.sort((a,b)=>a.from<b.from?-1:1).slice(0,5).map(l=>{const e=S.employees[l.empId]||{};return`<li><span>${esc(e.name)} <span class="small mut">· ${esc((LT[l.type]||{n:''}).n)} · ${fmtD(l.from)}</span></span><button class="btn sm pri" data-act="leaveReview" data-id="${esc(l.id)}">Review</button></li>`}).join('')}</ul>`:''}
       </div>
     </div>
-  </div>`;
+  </div>
+  ${whosOff(es)}`;
 };
+
+/* Who's off */
+let DW=30;
+function whosOff(es){
+  const t=today(),end=addD(t,DW),ids=new Set(es.map(e=>e.id));
+  const ls=Object.values(S.leaves).filter(l=>ids.has(l.empId)&&['approved','pending'].includes(l.status)&&l.to>=t&&l.from<=end).sort((a,b)=>a.from<b.from?-1:a.from>b.from?1:a.to<b.to?-1:1);
+  const now=ls.filter(l=>l.from<=t),soon=ls.filter(l=>l.from>t);
+  const days=Array.from({length:14},(_,i)=>addD(t,i));
+  const cnt=days.map(d=>Object.values(S.leaves).filter(l=>ids.has(l.empId)&&l.status==='approved'&&l.from<=d&&l.to>=d).length),mx=Math.max(1,...cnt);
+  const wk=d=>{const co=CO!=='all'?S.companies[CO]:null;return co?isOff(d,co):[0,6].includes(D(d).getUTCDay())};
+  const row=l=>{const e=S.employees[l.empId]||{},n=counted(l,e).length;return`<li><span class="nm">${avatar(e,34)}<span><b>${esc(e.name)}</b><div class="small mut">${esc([coName(e.companyId),e.department].filter(Boolean).join(' · '))}</div></span></span><span class="row" style="gap:8px;justify-content:flex-end"><span class="tag">${esc((LT[l.type]||{n:l.type}).n)}</span><span class="small pill">${fmtD(l.from)} – ${fmtD(l.to)} · ${n} d · back ${fmtD(backDate(l,e))}</span>${l.status==='pending'?`${stTag('pending')}<button class="btn sm pri" data-act="leaveReview" data-id="${esc(l.id)}">Review</button>`:''}</span></li>`};
+  return`<div class="panel"><div class="ph"><h2>Who’s off</h2><div class="row">${[7,30,90].map(n=>`<button class="chip ${DW===n?'on':''}" data-act="dw" data-n="${n}">Next ${n} days</button>`).join('')}</div></div>
+  <div class="offstrip" aria-label="People on approved leave, next 14 days">${days.map((d,i)=>`<div class="od ${wk(d)?'we':''} ${i===0?'td':''}" title="${fmtD(d)}: ${cnt[i]} off"><span class="odn">${cnt[i]||''}</span><span class="odb"><i style="height:${cnt[i]/mx*100}%"></i></span><span class="odl">${D(d).toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}).slice(0,2)}<br>${D(d).getUTCDate()}</span></div>`).join('')}</div>
+  <div class="grid g2" style="margin-top:14px"><div><h3 style="margin-bottom:6px">On leave now <span class="mut">(${now.length})</span></h3>${now.length?`<ul class="alerts">${now.map(row).join('')}</ul>`:'<p class="small mut">Nobody is on leave today.</p>'}</div>
+  <div><h3 style="margin-bottom:6px">Starting in the next ${DW} days <span class="mut">(${soon.length})</span></h3>${soon.length?`<ul class="alerts">${soon.map(row).join('')}</ul>`:'<p class="small mut">No leave booked in this period.</p>'}</div></div>
+  <p class="small mut" style="margin-top:8px">Bars count approved leave per day; pending requests are listed with a Review button.</p></div>`;
+}
+ACT.dw=d=>{DW=+d.n;render()};
 
 /* Employees */
 let EF={q:'',st:'current'};
