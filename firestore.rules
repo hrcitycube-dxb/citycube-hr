@@ -50,8 +50,8 @@ service cloud.firestore {
         && request.resource.data.empId == myEmpId()
         && request.resource.data.status == 'pending'
         && request.resource.data.requestedBy == request.auth.uid
-        && request.resource.data.keys().hasOnly(['id','empId','type','from','to','note','ref','status','source','created','requestedBy','updatedAt'])
-        && request.resource.data.type is string
+        && request.resource.data.keys().hasOnly(['id','empId','type','from','to','note','ref','status','source','created','requestedBy','fileId','updatedAt'])
+        && request.resource.data.type in ['annual','sick','unpaid','maternity','comp']
         && request.resource.data.from is string
         && request.resource.data.to is string
         && request.resource.data.from <= request.resource.data.to

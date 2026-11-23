@@ -119,12 +119,23 @@ The CityCube HR icon then appears on the home screen and opens full-screen with 
 - **Not included on the free plan:** push notifications. Staff see approvals the next time they open the app.
 
 ## How leave requests work
-1. The employee signs in → **My leave** → **Request leave**. The form shows their balance and warns about
-   problems: not enough balance, sick leave during probation, over the legal maximum, overlapping dates and so on.
-2. The request appears for HR under **Leave → Pending**, tagged *via portal*, with a count next to the menu item.
-3. HR clicks **Approve** or **Reject**. The employee sees the result straight away. Approved unpaid, sick or maternity
-   days flow into payroll deductions and into the leave balance.
-4. While a request is still pending, the employee can cancel it. They cannot approve or change it.
+Leave types: **Annual leave**, **Sick leave**, **Unpaid leave**, **Maternity leave** (offered only to employees
+recorded as female and married) and **Compensatory day off**.
+
+1. The employee signs in → **Leave** → **Request leave**. As they fill it in, the form shows:
+   - the number of days and the date they're back at work;
+   - their balance, and any problems (not enough balance, sick leave in probation, overlapping dates);
+   - how the days will be paid (full, half or unpaid) and an estimate of any salary deduction.
+   For sick leave they can take a photo of the medical certificate and attach it.
+2. HR sees the request under **Leave → Pending** (count in the menu) and clicks **Review**. The review shows the
+   balance and pay effect, the certificate, and **who else in the company is off on the same dates**.
+3. HR **approves**, or **rejects with a reason**. A reason is required, and the employee sees it straight away under
+   *My requests*. Approving a sick leave also accepts its attached certificate.
+4. While a request is still pending, the employee can cancel it.
+
+**Compensatory days:** when someone works on a rest day or public holiday, open the employee →
+**Compensatory days → Manage** and credit the day. The employee sees the balance, and requests can't exceed it.
+Pay either a compensatory day or rest-day overtime in payroll, not both.
 
 ## Employee photos and document files
 Photos and scans (passport, visa, Emirates ID, contract, certificates and so on) are stored **inside the Firestore

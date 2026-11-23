@@ -6,12 +6,12 @@
 // are what protect your data.
 // ─────────────────────────────────────────────────────────────
 export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyD4T6y97oDQZ7hIXDjTEOAjscTSurlTplY",
+  authDomain: "citycube-hr.firebaseapp.com",
+  projectId: "citycube-hr",
+  storageBucket: "citycube-hr.firebasestorage.app",
+  messagingSenderId: "357152631180",
+  appId: "1:357152631180:web:3e1865e95e82a4addb8ea9"
 };
 
 // Employees sign in with a plain username such as "ccw-001".

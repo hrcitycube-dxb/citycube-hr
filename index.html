@@ -250,7 +250,7 @@ if(CONFIGURED){
 const LT={
   annual:{n:'Annual leave',pay:'full',art:'Art. 29'},
   sick:{n:'Sick leave',pay:'sick',art:'Art. 31'},
-  maternity:{n:'Maternity leave (60 days)',pay:'mat',art:'Art. 30',female:1},
+  maternity:{n:'Maternity leave',pay:'mat',art:'Art. 30',female:1},
   mat_child:{n:'Maternity – sick/disabled child (+30 paid)',pay:'full',art:'Art. 30',female:1},
   mat_unpaid:{n:'Maternity extension (unpaid, up to 45)',pay:'none',excl:1,art:'Art. 30',female:1},
   parental:{n:'Parental leave (5 working days)',pay:'full',basis:'work',max:5,art:'Art. 32'},
@@ -260,7 +260,7 @@ const LT={
   hajj:{n:'Hajj / religious (unpaid)',pay:'none',excl:1,art:'Company policy'},
   unpaid:{n:'Unpaid leave',pay:'none',excl:1,art:'Art. 33'},
   absence:{n:'Unauthorised absence',pay:'none',excl:1,art:'Art. 44'},
-  comp:{n:'Compensatory day off',pay:'full',art:'Art. 19/28'}
+  comp:{n:'Compensatory day off',pay:'full',basis:'work',art:'Art. 19/28'}
 };
 const gross=e=>num(e.basic)+num(e.housing)+num(e.transport)+num(e.otherAllow);
 const coOf=e=>S.companies[e.companyId]||{};
@@ -527,7 +527,7 @@ ACT.empView=d=>{
   <div data-p="0"><div class="grid g3">
     <div><h3>Service</h3><dl class="dl"><dt>Joined</dt><dd>${fmtD(e.join)}</dd><dt>Probation ends</dt><dd>${probMonths(e)?fmtD(probEnd(e)):'No probation'}</dd><dt>Contract ends</dt><dd>${fmtD(e.contractEnd)}</dd><dt>Net service</dt><dd>${(netService(e,t)/365).toFixed(2)} yrs</dd><dt>Unpaid days excluded</dt><dd>${exclDays(e,t)}</dd><dt>Notice period</dt><dd>${num(e.notice)||30} days</dd></dl></div>
     <div><h3>Pay (AED / month)</h3><dl class="dl"><dt>Basic</dt><dd>${aed(e.basic)}</dd><dt>Housing</dt><dd>${aed(e.housing)}</dd><dt>Transport</dt><dd>${aed(e.transport)}</dd><dt>Other</dt><dd>${aed(e.otherAllow)}</dd><dt class="tot">Gross</dt><dd class="tot">${aed(gross(e))}</dd><dt>Payment</dt><dd>${esc(e.payMethod==='cash'?'Outside WPS':'WPS')}${e.iban?' · '+esc(e.iban.slice(-4)):''}</dd></dl></div>
-    <div><h3>Entitlements today</h3><dl class="dl"><dt>Annual leave accrued</dt><dd>${lb.acc} d</dd><dt>Taken / booked</dt><dd>${lb.taken} / ${lb.booked} d</dd>${lb.od?`<dt>Go-live balance (${fmtD(lb.od)})</dt><dd>${num(e.leaveOpen)} d</dd>`:''}<dt>Adjustment</dt><dd>${lb.adj} d</dd><dt class="tot">Leave balance</dt><dd class="tot">${lb.bal} d</dd><dt>Sick leave this service year</dt><dd>${su} / 90 d</dd><dt class="tot">Gratuity accrued</dt><dd class="tot">AED ${aed(g.amt)}</dd></dl><p class="small mut">${esc(g.note)} ${esc(lb.earlyNote)}</p></div>
+    <div><h3>Entitlements today</h3><dl class="dl"><dt>Annual leave accrued</dt><dd>${lb.acc} d</dd><dt>Taken / booked</dt><dd>${lb.taken} / ${lb.booked} d</dd>${lb.od?`<dt>Go-live balance (${fmtD(lb.od)})</dt><dd>${num(e.leaveOpen)} d</dd>`:''}<dt>Adjustment</dt><dd>${lb.adj} d</dd><dt class="tot">Leave balance</dt><dd class="tot">${lb.bal} d</dd><dt>Sick leave this service year</dt><dd>${su} / 90 d</dd><dt>Compensatory days <button class="btn sm" data-act="compAdd" data-id="${esc(e.id)}" style="min-height:26px;padding:1px 8px;margin-left:4px">Manage</button></dt><dd>${compBal(e).bal} d</dd><dt class="tot">Gratuity accrued</dt><dd class="tot">AED ${aed(g.amt)}</dd></dl><p class="small mut">${esc(g.note)} ${esc(lb.earlyNote)}</p></div>
   </div></div>
   <div data-p="1" hidden><table class="stack"><thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead><tbody>${[['Passport',e.passportNo,e.passportExp],['Residence visa',e.visaNo,e.visaExp],['Emirates ID',e.eidNo,e.eidExp],['Work permit',e.permitNo,e.permitExp],['Health insurance',e.insurer,e.insExp],['ILOE insurance','',e.iloeExp],['Employment contract','',e.contractEnd]].map(([n,no,x])=>{const dd=x?diff(t,x):null;return`<tr><td>${n}</td><td>${esc(no||'—')}</td><td>${fmtD(x)}</td><td>${!x?'<span class="tag warn">not recorded</span>':dd<0?'<span class="tag bad">expired</span>':dd<=num(ST().alertDays)?`<span class="tag acc">${dd} d left</span>`:'<span class="tag ok">valid</span>'}</td></tr>`}).join('')}</tbody></table></div>
   <div data-p="2" hidden>${leaves.length?`<table class="stack"><thead><tr><th>Type</th><th>From</th><th>To</th><th class="num">Days</th><th>Status</th></tr></thead><tbody>${leaves.map(l=>`<tr><td>${esc((LT[l.type]||{}).n)}</td><td>${fmtD(l.from)}</td><td>${fmtD(l.to)}</td><td class="num">${counted(l,e).length}</td><td>${esc(l.status)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">No leave recorded.</div>'}</div>
@@ -574,8 +574,8 @@ V.leave=()=>{
   const ls=Object.values(S.leaves).filter(l=>ids.has(l.empId)&&(LF.st==='all'||l.status===LF.st)).sort((a,b)=>a.from<b.from?1:-1);
   return`<div class="ph"><h1>Leave <span class="mut" style="font-size:18px">· ${coLabel()}</span></h1><button class="btn pri" data-act="leaveNew" ${ids.size?'':'disabled'}>Record leave</button></div>
   <div class="panel"><div class="row" style="margin-bottom:12px">${['pending','approved','rejected','cancelled','all'].map(s=>`<button class="chip ${LF.st===s?'on':''}" data-act="lf" data-s="${s}">${s[0].toUpperCase()+s.slice(1)}</button>`).join('')}</div>
-  ${ls.length?`<div class="scroll"><table class="stack"><thead><tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th class="num">Days</th><th>Pay</th><th>Status</th><th></th></tr></thead><tbody>${ls.map(l=>{const e=S.employees[l.empId]||{},c=counted(l,e),pv=payPreview(l,e);return`<tr><td><b>${esc(e.name)}</b><div class="small mut">${esc(coName(e.companyId))}</div></td><td>${esc((LT[l.type]||{}).n)}${l.note?`<div class="small mut">${esc(l.note)}</div>`:''}</td><td>${fmtD(l.from)}</td><td>${fmtD(l.to)}</td><td class="num">${c.length}</td><td class="small">${esc(pv)}</td><td>${stTag(l.status)}${l.source==='portal'?' <span class="tag">via portal</span>':''}</td><td><div class="row">${l.status==='pending'?`<button class="btn sm" data-act="leaveSet" data-id="${esc(l.id)}" data-s="approved">Approve</button><button class="btn sm" data-act="leaveSet" data-id="${esc(l.id)}" data-s="rejected">Reject</button>`:''}<button class="btn sm" data-act="leaveNew" data-id="${esc(l.id)}">Edit</button></div></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty">No leave in this list.</div>'}</div>
-  <div class="panel small mut">Sick leave pay is worked out across each service year: first 15 days full pay, next 30 half pay, rest unpaid; none is paid during probation. Maternity: 45 days full, 15 half. Unpaid leave and absence are excluded from service for gratuity and deducted in payroll.</div>`;
+  ${ls.length?`<div class="scroll"><table class="stack"><thead><tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th class="num">Days</th><th>Pay</th><th>Status</th><th></th></tr></thead><tbody>${ls.map(l=>{const e=S.employees[l.empId]||{},c=counted(l,e),pv=payPreview(l,e);return`<tr><td><b>${esc(e.name)}</b><div class="small mut">${esc(coName(e.companyId))}</div></td><td>${esc((LT[l.type]||{}).n)}${l.note?`<div class="small mut">${esc(l.note)}</div>`:''}</td><td>${fmtD(l.from)}</td><td>${fmtD(l.to)}</td><td class="num">${c.length}</td><td class="small">${esc(pv)}</td><td>${stTag(l.status)}${l.source==='portal'?' <span class="tag">via portal</span>':''}${l.fileId?' <span class="tag">certificate</span>':''}${hrNoteHTML(l)}</td><td><div class="row"><button class="btn sm ${l.status==='pending'?'pri':''}" data-act="leaveReview" data-id="${esc(l.id)}">${l.status==='pending'?'Review':'Details'}</button></div></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty">No leave in this list.</div>'}</div>
+  <div class="panel small mut">Sick leave pay is worked out across each service year: first 15 days full pay, next 30 half pay, rest unpaid; none is paid during probation. Maternity: 45 days full, 15 half. Unpaid leave is deducted in payroll and excluded from service for gratuity. Compensatory days come from credits on the employee record (Employees → open → Compensatory days → Manage). Rejections always carry a reason the employee can see.</div>`;
 };
 function payPreview(l,e){
   const t=LT[l.type]||{};const c=counted(l,e);if(!c.length)return'—';
@@ -584,25 +584,30 @@ function payPreview(l,e){
   return[f&&f+' full',h&&h+' half',u&&u+' unpaid'].filter(Boolean).join(', ');
 }
 ACT.lf=d=>{LF.st=d.s;render()};
-ACT.leaveSet=async d=>{const l=clean(S.leaves[d.id]);l.status=d.s;l.decided=today();l.decidedBy=ME.uid;try{await put('leaves',l);toast('Leave '+d.s)}catch(e){}};
 ACT.leaveNew=d=>{
-  const l=d.id?clean(S.leaves[d.id]):{empId:d.emp||(visEmps().find(e=>e.status!=='exited')||{}).id,type:'annual',from:today(),to:today(),status:'pending'};
+  const l=d.id?clean(S.leaves[d.id]):{empId:d.emp||(visEmps().find(e=>e.status!=='exited')||{}).id,type:'annual',from:today(),to:today(),status:'approved'};
   const list=visEmps().filter(e=>e.status!=='exited'||e.id===l.empId);
   openModal(d.id?'Edit leave':'Record leave',`<div class="form" id="lf">
    <label class="f"><span class="req">Employee</span><select data-k="empId" id="lEmp">${list.map(e=>`<option value="${esc(e.id)}" ${e.id===l.empId?'selected':''}>${esc(e.name)} · ${esc(coName(e.companyId))}</option>`).join('')}</select></label>
-   <label class="f"><span class="req">Leave type</span><select data-k="type" id="lType">${Object.entries(LT).map(([k,t])=>`<option value="${k}" ${k===l.type?'selected':''}>${esc(t.n)}</option>`).join('')}</select></label>
-   <label class="f"><span class="req">From</span><input type="date" data-k="from" id="lFrom" value="${esc(l.from)}"></label>
-   <label class="f"><span class="req">To</span><input type="date" data-k="to" id="lTo" value="${esc(l.to)}"></label>
-   <label class="f">Status<select data-k="status">${['pending','approved','rejected'].map(s=>`<option ${s===l.status?'selected':''}>${s}</option>`).join('')}</select></label>
-   <label class="f">Medical certificate / reference<input data-k="ref" value="${esc(l.ref||'')}"></label>
-   <label class="f wide">Reason / note<textarea data-k="note">${esc(l.note||'')}</textarea></label></div>
-   <div class="panel" style="margin-top:12px;background:var(--panel2)" id="lChk"></div>`,
+   <label class="f"><span class="req">Leave type</span><select data-k="type" id="lType">${typeOpts(S.employees[l.empId],l.type)}</select></label>
+   <label class="f"><span class="req">From</span><input type="date" data-k="from" value="${esc(l.from)}"></label>
+   <label class="f"><span class="req">To</span><input type="date" data-k="to" value="${esc(l.to)}"></label>
+   <label class="f">Status<select data-k="status">${['pending','approved','rejected','cancelled'].map(s=>`<option ${s===l.status?'selected':''}>${s}</option>`).join('')}</select></label>
+   <label class="f">Medical certificate ref.<input data-k="ref" value="${esc(l.ref||'')}"></label>
+   <label class="f wide">Employee’s reason / note<textarea data-k="note">${esc(l.note||'')}</textarea></label>
+   <label class="f wide">Note to employee <span class="mut">(required when rejected)</span><textarea data-k="hrNote" maxlength="300">${esc(l.hrNote||'')}</textarea></label></div>
+   <div class="panel" style="margin-top:12px;background:var(--panel2)" id="lChk"></div><div id="lErr" class="warnl"></div>`,
   `${d.id?`<button class="btn del" id="lDel">Delete</button>`:''}<button class="btn" data-act="close">Cancel</button><button class="btn pri" id="lSave">Save</button>`);
+  $('#lEmp').addEventListener('change',()=>{$('#lType').innerHTML=typeOpts(S.employees[$('#lEmp').value],$('#lType').value)});
   const chk=()=>{const v=Object.assign({},l,readForm($('#lf'))),e=S.employees[v.empId];if(!e){$('#lChk').textContent='Choose an employee.';return v}
     $('#lChk').innerHTML=chkHTML(leaveCheck(v,e,l.id));return v};
   $('#lf').addEventListener('input',chk);$('#lf').addEventListener('change',chk);chk();
-  $('#lSave').onclick=async()=>{const v=chk();if(!v.empId||!v.from||!v.to||v.to<v.from){toast('Check the dates and employee');return}if(!v.id)v.id=uid();try{await put('leaves',v);closeModal();toast('Leave saved')}catch(e){}};
-  if(d.id)$('#lDel').onclick=async()=>{try{await del('leaves',d.id);closeModal();toast('Deleted')}catch(e){}};
+  $('#lSave').onclick=async()=>{const v=chk();if(!v.empId||!v.from||!v.to||v.to<v.from){$('#lErr').textContent='Check the employee and dates.';return}
+    if(v.status==='rejected'&&String(v.hrNote||'').trim().length<3){$('#lErr').textContent='Write the reason for rejecting — the employee will see it.';return}
+    if(!canTake(v.type,S.employees[v.empId])&&v.type!==(S.leaves[l.id]||{}).type){$('#lErr').textContent='Maternity leave is for married female employees (check gender and marital status on the employee record).';return}
+    const prev=S.leaves[l.id];if(!prev||prev.status!==v.status){if(['approved','rejected'].includes(v.status)){v.decided=today();v.decidedBy=ME.uid}}
+    if(!v.id){v.id=uid();v.created=today();v.source='hr'}try{await put('leaves',v);closeModal();toast('Leave saved')}catch(e){}};
+  if(d.id)$('#lDel').onclick=async()=>{if(!(await ask('Delete this leave record?','Delete')))return;try{await del('leaves',d.id);toast('Deleted')}catch(e){}};
 };
 
 /* Payroll */
@@ -855,51 +860,105 @@ ACT.photoUp=d=>{const e=S.employees[d.id];if(!e)return;
 };
 ACT.photoDl=async d=>{try{const p=await getDoc(doc(fdb,'photos',d.id));if(!p.exists()){toast('No full-size photo on file');return}const e=S.employees[d.id]||{},data=String(p.data().data||'');if(!data.startsWith('data:image/jpeg;base64,')){toast('Photo is not valid');return}const a=document.createElement('a');a.href=data;a.download=`photo-${e.code||d.id}.jpg`;document.body.appendChild(a);a.click();a.remove()}catch(e){toast('Could not load the photo: '+errMsg(e))}};
 
-/* ---------- shared leave checks ---------- */
+/* ---------- shared leave logic ---------- */
+const LEAVE_TYPES=['annual','sick','unpaid','maternity','comp'];
+const canTake=(k,e)=>k!=='maternity'||(!!e&&e.gender==='Female'&&e.marital==='Married');
+const typeOpts=(e,sel)=>LEAVE_TYPES.filter(k=>canTake(k,e)||k===sel).map(k=>`<option value="${k}" ${k===sel?'selected':''}>${esc(LT[k].n)}</option>`).join('')+(sel&&!LEAVE_TYPES.includes(sel)&&LT[sel]?`<option value="${sel}" selected>${esc(LT[sel].n)} (old type)</option>`:'');
+function compBal(e,excl){const cr=(e.compCredits||[]).reduce((a,c)=>a+num(c.days),0);let used=0;
+  Object.values(S.leaves).forEach(l=>{if(l.empId===e.id&&l.type==='comp'&&l.id!==excl&&['approved','pending'].includes(l.status))used+=counted(l,e).length});
+  return{cr:r2(cr),used,bal:r2(cr-used)}}
+function backDate(v,e){const co=coOf(e);let d=addD(v.to,1),n=0;while(isOff(d,co)&&n++<14)d=addD(d,1);return d}
+function simPay(v,e,lid){
+  const saved=S.leaves;S.leaves=Object.assign({},saved);if(lid)delete S.leaves[lid];S.leaves.__sim=Object.assign({},v,{id:'__sim',status:'approved'});Sv++;
+  let m;try{m=fracs(e.id)}finally{S.leaves=saved;Sv++}
+  let f=0,h=0,u=0;counted(v,e).forEach(d=>{const x=(m[d]||{f:1}).f;x===1?f++:x===0?u++:h++});
+  return{f,h,u,ded:r2((h*.5+u)*gross(e)/30)}}
 function leaveCheck(v,e,lid){
-  const t=LT[v.type]||{},c=counted(v,e),w=[],info=[];
-  info.push(`<b>${c.length}</b> ${t.basis==='work'||(v.type==='annual'&&ST().annualBasis==='work')?'working':'calendar'} day(s) counted · ${esc(t.art||'')}`);
-  if(v.to<v.from)w.push('End date is before start date.');
-  if(t.female&&e.gender!=='Female')w.push('This leave type applies to female employees.');
-  if(t.max&&c.length>t.max)w.push(`Statutory maximum is ${t.max} days for this leave.`);
-  if(v.type==='annual'){const b=annualBal(e,v.from),own=lid&&S.leaves[lid]&&S.leaves[lid].status==='approved'?counted(S.leaves[lid],e).length:0;info.push(`Annual leave balance before this request: ${r2(b.bal+own)} days`);if(c.length>b.bal+own)w.push('More days than the annual leave balance — the extra days may be unpaid.');if(netService(e,v.from)<183)w.push('Annual leave is earned after 6 months of service.')}
-  if(v.type==='sick'){if(inProb(e,v.from))w.push('During probation sick leave is unpaid (Art. 31).');info.push(`Sick days already used this service year: ${sickUsed(e,v.from)} of 90 (15 full pay, 30 half pay, rest unpaid)`)}
-  if(v.type==='study'&&netService(e,v.from)<730)w.push('Study leave needs at least 2 years of service.');
-  if(v.type==='parental'){if(!e.childBirth)w.push('HR needs the child’s birth date to confirm the 6-month window.');else if(diff(e.childBirth,v.from)>182||v.from<e.childBirth)w.push('Parental leave must be taken within 6 months of the birth.')}
-  if(v.type==='national'&&!e.pension)w.push('National service leave applies to UAE nationals.');
+  const t=LT[v.type]||{},w=[],info=[];
+  if(!v.from||!v.to)return{info:['Choose the dates.'],w};
+  if(v.to<v.from)return{info,w:['The end date is before the start date.']};
+  const c=counted(v,e),work=t.basis==='work'||(v.type==='annual'&&ST().annualBasis==='work');
+  info.push(`<b>${c.length}</b> ${work?'working':'calendar'} day${c.length===1?'':'s'} · back at work <b>${fmtD(backDate(v,e))}</b>`);
+  if(!canTake(v.type,e))w.push('Maternity leave is available to married female employees.');
+  if(v.type==='annual'){const b=annualBal(e,v.from),own=lid&&S.leaves[lid]&&['approved','pending'].includes(S.leaves[lid].status)&&S.leaves[lid].type==='annual'?counted(S.leaves[lid],e).length:0,avail=r2(b.bal+own);
+    info.push(`Annual leave available: ${avail} day${avail===1?'':'s'}`);
+    if(c.length>avail)w.push('More days than the annual leave balance — the extra days would be unpaid.');
+    if(netService(e,v.from)<183)w.push('Annual leave is earned after 6 months of service.')}
+  if(v.type==='sick'){if(inProb(e,v.from))w.push('Sick leave during probation is unpaid (Art. 31).');info.push(`Sick days already used this service year: ${sickUsed(e,v.from)} of 90`)}
+  if(v.type==='maternity'&&c.length>60)w.push('Maternity leave is 60 days: 45 at full pay and 15 at half pay.');
+  if(v.type==='comp'){const b=compBal(e,lid);info.push(`Compensatory days available: ${b.bal}`);if(c.length>b.bal)w.push(b.cr?`Only ${b.bal} compensatory day${b.bal===1?'':'s'} available.`:'No compensatory days credited yet. HR credits them when you work on a rest day or public holiday.')}
+  if(c.length){const p=simPay(v,e,lid);info.push('Pay: '+([p.f&&p.f+' full',p.h&&p.h+' half',p.u&&p.u+' unpaid'].filter(Boolean).join(', ')||'—')+(p.ded?` · estimated salary deduction AED ${aed(p.ded)}`:''))}
   const ov=Object.values(S.leaves).find(x=>x.id!==lid&&x.empId===e.id&&!['rejected','cancelled'].includes(x.status)&&x.from<=v.to&&x.to>=v.from);
   if(ov)w.push(`Overlaps another ${(LT[ov.type]||{n:'leave'}).n.toLowerCase()} (${fmtD(ov.from)} – ${fmtD(ov.to)}).`);
   return{info,w};
 }
 const chkHTML=({info,w})=>`<div class="small">${info.join('<br>')}</div>${w.length?`<div class="warnl" style="margin-top:6px">${w.map(esc).join('<br>')}</div>`:''}`;
 const stTag=s=>`<span class="tag ${s==='approved'?'ok':s==='rejected'?'bad':s==='cancelled'?'':'warn'}">${esc(s==='pending'?'awaiting approval':s)}</span>`;
+const hrNoteHTML=l=>l.hrNote?`<div class="small ${l.status==='rejected'?'warnl':'mut'}">${l.status==='rejected'?'Reason':'HR'}: ${esc(l.hrNote)}</div>`:'';
+
+/* HR review of a request */
+ACT.leaveReview=d=>{
+  const l=S.leaves[d.id];if(!l)return;const e=S.employees[l.empId]||{},ck=leaveCheck(l,e,l.id);
+  const others=Object.values(S.leaves).filter(x=>x.id!==l.id&&x.empId!==l.empId&&['approved','pending'].includes(x.status)&&x.from<=l.to&&x.to>=l.from).map(x=>({x,o:S.employees[x.empId]})).filter(({o})=>o&&o.companyId===e.companyId)
+    .sort((a,b)=>(b.o.department===e.department)-(a.o.department===e.department));
+  const cert=l.fileId&&S.files[l.fileId];
+  openModal('Leave request',`<div class="row" style="gap:12px;margin:-4px 0 14px">${avatar(e,48)}<div><b>${esc(e.name)}</b><div class="small mut">${esc([e.code,e.designation,e.department,coName(e.companyId)].filter(Boolean).join(' · '))}</div></div></div>
+    <dl class="dl"><dt>Type</dt><dd>${esc((LT[l.type]||{n:l.type}).n)}</dd><dt>Dates</dt><dd>${fmtD(l.from)} – ${fmtD(l.to)}</dd><dt>Requested</dt><dd>${fmtD(l.created)}${l.source==='portal'?' · via portal':''}</dd>${l.note?`<dt>Employee note</dt><dd style="text-align:left">${esc(l.note)}</dd>`:''}</dl>
+    <div class="panel" style="margin-top:12px;background:var(--panel2)">${chkHTML(ck)}</div>
+    ${cert?`<p><button class="btn sm" data-act="fileView" data-id="${esc(l.fileId)}">View medical certificate</button></p>`:l.type==='sick'?'<p class="small warnl">No medical certificate attached yet.</p>':''}
+    <h3 style="margin:14px 0 6px">Also off on these dates</h3>${others.length?`<ul class="alerts">${others.map(({x,o})=>`<li><span>${esc(o.name)}${o.department?` <span class="small mut">· ${esc(o.department)}</span>`:''}</span><span class="small">${fmtD(x.from)} – ${fmtD(x.to)} ${stTag(x.status)}</span></li>`).join('')}</ul>`:'<p class="small mut">Nobody else in this company is off on these dates.</p>'}
+    ${l.status==='pending'?`<label class="f" style="margin-top:14px">Note to the employee <span class="mut">(required when rejecting)</span><textarea id="rvNote" maxlength="300" placeholder="e.g. Peak season — please choose dates after 15 January.">${esc(l.hrNote||'')}</textarea></label><div id="rvErr" class="warnl"></div>`:`<p style="margin-top:12px">${stTag(l.status)} ${l.decided?'<span class="small mut">on '+fmtD(l.decided)+'</span>':''}</p>${hrNoteHTML(l)}`}`,
+    `<button class="btn" data-act="leaveNew" data-id="${esc(l.id)}">Edit</button>${l.status==='pending'?'<button class="btn del" id="rvRej">Reject</button><button class="btn pri" id="rvOk">Approve</button>':''}`);
+  if(l.status!=='pending')return;
+  const decide=async s=>{const note=$('#rvNote').value.trim();if(s==='rejected'&&note.length<3){$('#rvErr').textContent='Write the reason for rejecting — the employee will see it.';$('#rvNote').focus();return}
+    const v=clean(l);v.status=s;v.hrNote=note;v.decided=today();v.decidedBy=ME.uid;
+    try{await put('leaves',v);const f=v.fileId&&S.files[v.fileId];if(s==='approved'&&f&&f.status==='review')await put('files',Object.assign(clean(f),{status:'ok',reviewed:today(),reviewedBy:ME.uid}));
+      closeModal();toast(s==='approved'?'Leave approved':'Leave rejected — the employee will see your reason')}catch(x){}};
+  $('#rvOk').onclick=()=>decide('approved');$('#rvRej').onclick=()=>decide('rejected');
+};
+
+/* Compensatory day credits (HR) */
+ACT.compAdd=d=>{const e=S.employees[d.id];if(!e)return;const b=compBal(e),cr=(e.compCredits||[]).slice().sort((a,x)=>a.date<x.date?1:-1);
+  openModal('Compensatory days — '+e.name,`<p class="small">Credit a day off when ${esc(String(e.name).split(' ')[0])} works on a rest day or public holiday (Art. 19 and 28). Pay either a compensatory day or rest-day overtime in payroll — not both.</p>
+    <div class="kpis"><div class="kpi"><span>Credited</span><b>${b.cr}</b></div><div class="kpi"><span>Used / booked</span><b>${b.used}</b></div><div class="kpi"><span>Available</span><b>${b.bal}</b></div></div>
+    <div class="form" id="cpf"><label class="f"><span class="req">Date worked</span><input type="date" data-k="date" value="${today()}"></label><label class="f"><span class="req">Days to credit</span><select data-k="days"><option>1</option><option>2</option><option>3</option></select></label><label class="f wide">Reason<input data-k="note" maxlength="120" placeholder="e.g. Worked National Day for stock count"></label></div>
+    ${cr.length?`<h3 style="margin:14px 0 6px">History</h3><table class="stack"><thead><tr><th>Date worked</th><th class="num">Days</th><th>Reason</th><th></th></tr></thead><tbody>${cr.map(c=>`<tr><td>${fmtD(c.date)}</td><td class="num">${num(c.days)}</td><td>${esc(c.note||'')}</td><td><button class="btn sm del" data-act="compDel" data-id="${esc(e.id)}" data-k="${esc(c.id)}">Remove</button></td></tr>`).join('')}</tbody></table>`:''}`,
+    `<button class="btn" data-act="empView" data-id="${esc(e.id)}">Back</button><button class="btn pri" id="cpGo">Add credit</button>`);
+  $('#cpGo').onclick=async()=>{const v=readForm($('#cpf'));if(!v.date){toast('Choose the date worked');return}const x=clean(S.employees[e.id]);x.compCredits=(x.compCredits||[]).concat({id:uid(),date:v.date,days:num(v.days)||1,note:v.note||'',by:ME.uid,added:today()});
+    try{await put('employees',x);toast('Compensatory day credited');ACT.compAdd({id:e.id})}catch(y){}};
+};
+ACT.compDel=async d=>{const x=clean(S.employees[d.id]);x.compCredits=(x.compCredits||[]).filter(c=>c.id!==d.k);try{await put('employees',x);ACT.compAdd({id:d.id})}catch(y){}};
 
 /* ---------- employee portal ---------- */
 const PV={};
-const EMP_LT=['annual','sick','maternity','mat_child','mat_unpaid','parental','bereave','study','national','hajj','unpaid','comp'];
 const myEmp=()=>ME&&S.employees[ME.empId];
 const waitMsg='<div class="panel empty">Loading your record…</div>';
 PV['my-leave']=()=>{
   const e=myEmp();if(!e)return waitMsg;
-  const t=today(),lb=annualBal(e,t),su=sickUsed(e,t),ls=Object.values(S.leaves).sort((a,b)=>a.from<b.from?1:-1);
+  const t=today(),lb=annualBal(e,t),su=sickUsed(e,t),cb=compBal(e),ls=Object.values(S.leaves).sort((a,b)=>a.from<b.from?1:-1);
+  const next=ls.filter(l=>l.status==='approved'&&l.to>=t).sort((a,b)=>a.from<b.from?-1:1)[0];
   return`${installCard(false)}<div class="ph"><h1>Hello, ${esc(String(e.name||'').split(' ')[0])}</h1><button class="btn acc" data-act="myApply">Request leave</button></div>
-  <div class="kpis"><div class="kpi"><span>Annual leave balance</span><b>${lb.bal} days</b></div><div class="kpi"><span>Earned to date</span><b>${lb.acc}</b></div><div class="kpi"><span>Taken / booked</span><b>${lb.taken} / ${lb.booked}</b></div><div class="kpi"><span>Sick leave used this year</span><b>${su} / 90</b></div>${inProb(e,t)?`<div class="kpi hot"><span>Probation ends</span><b>${fmtD(probEnd(e))}</b></div>`:''}</div>
-  ${netService(e,t)<183?'<p class="small mut">Annual leave is earned after 6 months of service: 2 days a month until your first year, then 30 days a year.</p>':''}
-  <div class="panel"><div class="ph"><h2>My requests</h2></div>${ls.length?`<div class="scroll"><table class="stack"><thead><tr><th>Type</th><th>From</th><th>To</th><th class="num">Days</th><th>Status</th><th></th></tr></thead><tbody>${ls.map(l=>`<tr><td>${esc((LT[l.type]||{}).n)}${l.note?`<div class="small mut">${esc(l.note)}</div>`:''}</td><td>${fmtD(l.from)}</td><td>${fmtD(l.to)}</td><td class="num">${counted(l,e).length}</td><td>${stTag(l.status)}${l.hrNote?`<div class="small mut">${esc(l.hrNote)}</div>`:''}</td><td>${l.status==='pending'?`<button class="btn sm" data-act="myCancel" data-id="${esc(l.id)}">Cancel</button>`:''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">You have not requested any leave yet.</div>'}</div>
-  <div class="panel small"><h3 style="margin-bottom:6px">Your leave rights under UAE Labour Law</h3>Annual leave 30 days a year after one year (2 days a month after 6 months) · Sick leave up to 90 days a year after probation: 15 days full pay, 30 days half pay, then unpaid — send HR a medical certificate within 3 days · Maternity 60 days (45 full pay, 15 half pay) · Parental leave 5 working days within 6 months of a birth · Bereavement 5 days (spouse) or 3 days (parent, child, sibling, grandparent, grandchild) · Study leave 10 days after 2 years’ service.</div>`;
+  ${next?`<div class="panel install"><div><b>${next.from<=t?'On leave now':'Next leave'}: ${esc(LT[next.type].n)}</b><div class="small mut">${fmtD(next.from)} – ${fmtD(next.to)} · back at work ${fmtD(backDate(next,e))}</div></div></div>`:''}
+  <div class="kpis"><div class="kpi"><span>Annual leave available</span><b>${lb.bal} days</b></div><div class="kpi"><span>Annual taken / booked</span><b>${lb.taken} / ${lb.booked}</b></div><div class="kpi"><span>Sick leave used this year</span><b>${su} / 90</b></div>${cb.cr?`<div class="kpi"><span>Compensatory days</span><b>${cb.bal}</b></div>`:''}${inProb(e,t)?`<div class="kpi hot"><span>Probation ends</span><b>${fmtD(probEnd(e))}</b></div>`:''}</div>
+  <div class="panel"><div class="ph"><h2>My requests</h2></div>${ls.length?`<div class="scroll"><table class="stack"><thead><tr><th>Type</th><th>From</th><th>To</th><th class="num">Days</th><th>Status</th><th></th></tr></thead><tbody>${ls.map(l=>`<tr><td>${esc((LT[l.type]||{n:l.type}).n)}${l.note?`<div class="small mut">${esc(l.note)}</div>`:''}${l.fileId?'<div class="small mut">Certificate attached</div>':''}</td><td>${fmtD(l.from)}</td><td>${fmtD(l.to)}</td><td class="num">${counted(l,e).length}</td><td>${stTag(l.status)}${hrNoteHTML(l)}</td><td>${l.status==='pending'?`<button class="btn sm" data-act="myCancel" data-id="${esc(l.id)}">Cancel</button>`:''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">You have not requested any leave yet.</div>'}</div>`;
 };
 ACT.myApply=()=>{
   const e=myEmp();if(!e)return;const d0=addD(today(),1);
-  openModal('Request leave',`<div class="form" id="lf"><label class="f"><span class="req">Leave type</span><select data-k="type">${EMP_LT.filter(k=>!LT[k].female||e.gender==='Female').map(k=>`<option value="${k}">${esc(LT[k].n)}</option>`).join('')}</select></label>
+  openModal('Request leave',`<div class="form" id="lf"><label class="f"><span class="req">Leave type</span><select data-k="type">${typeOpts(e,'annual')}</select></label>
    <label class="f"><span class="req">From</span><input type="date" data-k="from" value="${d0}"></label><label class="f"><span class="req">To</span><input type="date" data-k="to" value="${d0}"></label>
-   <label class="f">Medical certificate / reference no.<input data-k="ref" maxlength="80"></label><label class="f wide">Reason / note for HR<textarea data-k="note" maxlength="500"></textarea></label></div>
-   <div class="panel" style="margin-top:12px;background:var(--panel2)" id="lChk"></div>`,
+   <label class="f wide">Reason / note for HR<textarea data-k="note" maxlength="500"></textarea></label>
+   <div class="f wide" id="certBox" hidden><span>Medical certificate</span><div class="upl">${touch()?'<label class="btn pri">Take photo<input type="file" id="cCam" accept="image/*" capture="environment" hidden></label>':''}<label class="btn">Choose file<input type="file" id="cFile" accept="application/pdf,image/*" hidden></label><span id="cName" class="small mut">Not attached</span></div><span class="small mut">Give HR a medical certificate within 3 days. If you don’t have it yet, upload it later under Documents.</span></div></div>
+   <div class="panel" style="margin-top:12px;background:var(--panel2)" id="lChk"></div><div id="lMsg" class="small"></div>`,
    `<button class="btn" data-act="close">Cancel</button><button class="btn pri" id="lSave">Send request</button>`);
-  const chk=()=>{const v=Object.assign(readForm($('#lf')),{empId:e.id});$('#lChk').innerHTML=chkHTML(leaveCheck(v,e,null));return v};
+  let cert=null;['#cCam','#cFile'].forEach(s=>{const i=$(s);if(i)i.onchange=()=>{if(i.files[0]){cert=i.files[0];$('#cName').textContent=cert.name+' · '+kb(cert.size)}}});
+  const chk=()=>{const v=Object.assign(readForm($('#lf')),{empId:e.id});$('#certBox').hidden=v.type!=='sick';$('#lChk').innerHTML=chkHTML(leaveCheck(v,e,null));return v};
   $('#lf').addEventListener('input',chk);$('#lf').addEventListener('change',chk);chk();
-  $('#lSave').onclick=async()=>{const v=chk();if(!v.from||!v.to||v.to<v.from){toast('Check the dates');return}
-    const r={id:uid(),empId:e.id,type:v.type,from:v.from,to:v.to,note:v.note||'',ref:v.ref||'',status:'pending',source:'portal',created:today(),requestedBy:ME.uid};
-    $('#lSave').disabled=true;try{await put('leaves',r);closeModal();toast('Request sent to HR')}catch(x){$('#lSave').disabled=false}};
+  $('#lSave').onclick=async()=>{const v=chk();if(!v.from||!v.to||v.to<v.from){toast('Check the dates');return}if(!canTake(v.type,e)){toast('This leave type is not available to you');return}
+    $('#lSave').disabled=true;$('#lMsg').textContent='Sending…';
+    try{let fileId='';if(v.type==='sick'&&cert){const m=await saveFile({empId:e.id,docType:'medical',expiry:'',note:'Sick leave '+fmtD(v.from)+' – '+fmtD(v.to),status:'review'},cert);fileId=m.id}
+      const r={id:uid(),empId:e.id,type:v.type,from:v.from,to:v.to,note:v.note||'',ref:'',status:'pending',source:'portal',created:today(),requestedBy:ME.uid};if(fileId)r.fileId=fileId;
+      await put('leaves',r);closeModal();toast('Request sent to HR')}
+    catch(x){$('#lMsg').innerHTML='<span class="warnl">'+esc(x&&x.code?errMsg(x):(x&&x.message)||'Could not send')+'</span>';$('#lSave').disabled=false}};
 };
 ACT.myCancel=async d=>{if(!(await ask('Cancel this leave request?','Cancel request')))return;const l=clean(S.leaves[d.id]);l.status='cancelled';try{await put('leaves',l);toast('Request cancelled')}catch(e){}};
 PV['my-payslips']=()=>{
