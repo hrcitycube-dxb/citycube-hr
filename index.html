@@ -245,7 +245,8 @@ const coOf=e=>S.companies[e.companyId]||{};
 const isOff=(d,co)=>{const wk=co.weekend||[0,6];if(wk.includes(D(d).getUTCDay()))return true;return ST().holidays.some(h=>h.date===d)};
 function leaveDates(l){const o=[];if(!l.from||!l.to||l.to<l.from)return o;for(let d=l.from;d<=l.to;d=addD(d,1))o.push(d);return o}
 function counted(l,e){const t=LT[l.type]||{};const work=t.basis==='work'||(l.type==='annual'&&ST().annualBasis==='work');const co=coOf(e);return leaveDates(l).filter(d=>!work||!isOff(d,co))}
-const probEnd=e=>e.join?addM(e.join,Math.min(6,num(e.probation)||6)):null;
+const probMonths=e=>{const v=e.probation;return v===''||v==null?6:Math.min(6,Math.max(0,num(v)))};
+const probEnd=e=>e.join?addM(e.join,probMonths(e)):null;
 const inProb=(e,d)=>e.join&&d<probEnd(e);
 const svcYear=(e,d)=>Math.floor(diff(e.join,d)/365);
 let FR={},FRv=0,Sv=0;
@@ -321,13 +322,23 @@ function payLine(e,month,inp){
 }
 
 /* ---------- alerts ---------- */
+const DOCREQ=[['Passport','passportNo','passportExp',1],['Residence visa','visaNo','visaExp',0],['Emirates ID','eidNo','eidExp',1],['Work permit','permitNo','permitExp',0],['Health insurance','insurer','insExp',0],['ILOE insurance','','iloeExp',0],['Contract end date','','contractEnd',1]];
+function docStatus(e){const t=today(),win=num(ST().alertDays)||60,r={expired:[],due:[],missing:[]};
+  DOCREQ.forEach(([n,no,ex,all])=>{if(!all&&e.pension)return;const x=e[ex];
+    const hasNo=!no||!!e[no];if(!x||!hasNo){r.missing.push(!x&&!hasNo?n:!x?(no?n+' expiry':n):n+' number');return}
+    const d=diff(t,x);if(d<0)r.expired.push(n);else if(d<=win)r.due.push(n)});
+  return r}
+function docTag(e){const s=docStatus(e),tip=[s.expired.length&&'Expired: '+s.expired.join(', '),s.due.length&&'Due soon: '+s.due.join(', '),s.missing.length&&'Missing: '+s.missing.join(', ')].filter(Boolean).join(' · ');
+  const t=s.expired.length?`<span class="tag bad">${s.expired.length} expired</span>`:s.due.length?`<span class="tag acc">${s.due.length} due</span>`:'';
+  const m=s.missing.length?`<span class="tag warn">${s.missing.length} missing</span>`:'';
+  return`<span class="row" style="gap:4px" title="${esc(tip)}">${t}${m}${!t&&!m?'<span class="tag ok">Complete</span>':''}</span>`}
 const DOCS=[['passportExp','Passport'],['visaExp','Residence visa'],['eidExp','Emirates ID'],['permitExp','Work permit'],['insExp','Health insurance'],['iloeExp','ILOE insurance'],['contractEnd','Contract']];
 function alerts(){
   const t=today(),win=num(ST().alertDays)||60,out=[];
   emps().filter(e=>e.status!=='exited').forEach(e=>{
     DOCS.forEach(([k,n])=>{if(!e[k])return;const d=diff(t,e[k]);if(d<=win)out.push({d,who:e.name,what:n,date:e[k],co:e.companyId,emp:e.id})});
     if(e.join){const pe=probEnd(e),d=diff(t,pe);if(d>=0&&d<=30)out.push({d,who:e.name,what:'Probation ends',date:pe,co:e.companyId,emp:e.id,info:1})}
-    if(!e.passportExp&&!e.pension)out.push({d:9999,who:e.name,what:'Passport expiry missing',co:e.companyId,emp:e.id,info:1});
+    const ms=docStatus(e).missing;if(ms.length)out.push({d:9999,who:e.name,what:'Missing: '+ms.join(', '),co:e.companyId,emp:e.id,info:1});
   });
   Object.values(S.companies).forEach(c=>{[['licenseExp','Trade licence'],['estExp','Establishment card']].forEach(([k,n])=>{if(!c[k])return;const d=diff(t,c[k]);if(d<=win)out.push({d,who:c.short||c.name,what:n,date:c[k],co:c.id})})});
   if(isAdmin())Object.values(S.files).filter(f=>f.status==='review').forEach(f=>{const e=S.employees[f.empId]||{};out.push({d:-99999,review:1,who:e.name||'',what:'New '+((DT[f.docType]||{n:'document'}).n).toLowerCase()+' to check',co:e.companyId,emp:f.empId})});
@@ -451,7 +462,7 @@ V.employees=()=>{
   return`<div class="ph"><h1>Employees <span class="mut" style="font-size:18px">· ${coLabel()}</span></h1><div class="row"><button class="btn" data-act="csvImport">Import CSV</button><button class="btn" data-act="csvExport">Export CSV</button><button class="btn pri" data-act="empEdit" ${cos().length?'':'disabled'}>Add employee</button></div></div>
   <div class="panel"><div class="row" style="margin-bottom:12px"><input id="eq" placeholder="Search name, number, role, passport, Emirates ID…" value="${esc(EF.q)}" style="max-width:420px"><select id="est" style="max-width:180px"><option value="current" ${EF.st==='current'?'selected':''}>Current staff</option><option value="exited" ${EF.st==='exited'?'selected':''}>Exited</option><option value="all" ${EF.st==='all'?'selected':''}>Everyone</option></select><span class="small mut">${list.length} shown</span></div>
   ${list.length?`<div class="scroll"><table class="stack"><thead><tr><th>No.</th><th>Name</th><th>Company</th><th>Designation</th><th>Nationality</th><th>Joined</th><th class="num">Gross (AED)</th><th class="num">Leave bal.</th><th>Status</th><th>Docs</th></tr></thead><tbody>
-  ${list.map(e=>{const a=DOCS.filter(([k])=>e[k]&&diff(today(),e[k])<=num(ST().alertDays)).length,lb=e.join?annualBal(e,today()).bal:0;return`<tr class="click" data-act="empView" data-id="${esc(e.id)}"><td>${esc(e.code)}</td><td><span class="nm">${avatar(e,32)}<b>${esc(e.name)}</b></span></td><td>${esc(coName(e.companyId))}</td><td>${esc(e.designation)}</td><td>${esc(e.nationality)}</td><td>${fmtD(e.join)}</td><td class="num">${aed(gross(e))}</td><td class="num">${lb}</td><td>${statusTag(e)}</td><td>${a?`<span class="tag acc">${a} due</span>`:'<span class="tag ok">OK</span>'}</td></tr>`}).join('')}
+  ${list.map(e=>{const lb=e.join?annualBal(e,today()).bal:0;return`<tr class="click" data-act="empView" data-id="${esc(e.id)}"><td>${esc(e.code)}</td><td><span class="nm">${avatar(e,32)}<b>${esc(e.name)}</b></span></td><td>${esc(coName(e.companyId))}</td><td>${esc(e.designation)}</td><td>${esc(e.nationality)}</td><td>${fmtD(e.join)}</td><td class="num">${aed(gross(e))}</td><td class="num">${lb}</td><td>${statusTag(e)}</td><td>${docTag(e)}</td></tr>`}).join('')}
   </tbody></table></div>`:`<div class="empty">${all.length?'No employees match this search.':'No employees yet. Add one, or import a CSV for several at once.'}</div>`}</div>`;
 };
 AFTER.employees=()=>{const q=$('#eq');q.oninput=()=>{EF.q=q.value;const p=q.selectionStart;render();const n=$('#eq');n.focus();n.setSelectionRange(p,p)};$('#est').onchange=e=>{EF.st=e.target.value;render()}};
@@ -486,7 +497,7 @@ ACT.empView=d=>{
   openModal(e.name,`<div class="row" style="margin:-6px 0 14px;gap:14px">${avatar(e,64)}<div><div class="row">${statusTag(e)}<span class="mut small">${[e.code,e.designation,coName(e.companyId)].filter(Boolean).map(esc).join(' · ')}</span></div><div class="row" style="margin-top:6px"><button class="btn sm" data-act="photoUp" data-id="${esc(e.id)}">${e.thumb?'Change photo':'Add photo'}</button>${e.thumb?`<button class="btn sm" data-act="photoDl" data-id="${esc(e.id)}">Download photo</button>`:''}</div></div></div>
   <div class="tabs" id="et"><button class="on" data-t="0">Summary</button><button data-t="1">Documents</button><button data-t="2">Leave (${leaves.length})</button><button data-t="3">Payslips (${runs.length})</button><button data-t="4">Loans (${loans.length})</button><button data-t="5">Files (${fileList(e.id).length})${fileList(e.id).some(f=>f.status==='review')?' •':''}</button></div>
   <div data-p="0"><div class="grid g3">
-    <div><h3>Service</h3><dl class="dl"><dt>Joined</dt><dd>${fmtD(e.join)}</dd><dt>Probation ends</dt><dd>${fmtD(probEnd(e))}</dd><dt>Contract ends</dt><dd>${fmtD(e.contractEnd)}</dd><dt>Net service</dt><dd>${(netService(e,t)/365).toFixed(2)} yrs</dd><dt>Unpaid days excluded</dt><dd>${exclDays(e,t)}</dd><dt>Notice period</dt><dd>${num(e.notice)||30} days</dd></dl></div>
+    <div><h3>Service</h3><dl class="dl"><dt>Joined</dt><dd>${fmtD(e.join)}</dd><dt>Probation ends</dt><dd>${probMonths(e)?fmtD(probEnd(e)):'No probation'}</dd><dt>Contract ends</dt><dd>${fmtD(e.contractEnd)}</dd><dt>Net service</dt><dd>${(netService(e,t)/365).toFixed(2)} yrs</dd><dt>Unpaid days excluded</dt><dd>${exclDays(e,t)}</dd><dt>Notice period</dt><dd>${num(e.notice)||30} days</dd></dl></div>
     <div><h3>Pay (AED / month)</h3><dl class="dl"><dt>Basic</dt><dd>${aed(e.basic)}</dd><dt>Housing</dt><dd>${aed(e.housing)}</dd><dt>Transport</dt><dd>${aed(e.transport)}</dd><dt>Other</dt><dd>${aed(e.otherAllow)}</dd><dt class="tot">Gross</dt><dd class="tot">${aed(gross(e))}</dd><dt>Payment</dt><dd>${esc(e.payMethod==='cash'?'Outside WPS':'WPS')}${e.iban?' · '+esc(e.iban.slice(-4)):''}</dd></dl></div>
     <div><h3>Entitlements today</h3><dl class="dl"><dt>Annual leave accrued</dt><dd>${lb.acc} d</dd><dt>Taken / booked</dt><dd>${lb.taken} / ${lb.booked} d</dd>${lb.od?`<dt>Go-live balance (${fmtD(lb.od)})</dt><dd>${num(e.leaveOpen)} d</dd>`:''}<dt>Adjustment</dt><dd>${lb.adj} d</dd><dt class="tot">Leave balance</dt><dd class="tot">${lb.bal} d</dd><dt>Sick leave this service year</dt><dd>${su} / 90 d</dd><dt class="tot">Gratuity accrued</dt><dd class="tot">AED ${aed(g.amt)}</dd></dl><p class="small mut">${esc(g.note)} ${esc(lb.earlyNote)}</p></div>
   </div></div>
