@@ -21,6 +21,7 @@
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
 [hidden]{display:none!important}
+.av{border-radius:50%;object-fit:cover;flex:none;display:inline-grid;place-items:center}.nm{display:flex;align-items:center;gap:10px}
 .brand{display:flex;align-items:center;gap:10px}.brand img{width:40px;height:40px;flex:none;background:#fff;border-radius:10px;padding:3px}
 .lgbox .mark{width:84px;height:84px;display:block;margin-bottom:14px}
 .logo{object-fit:contain;flex:none;vertical-align:middle}.chip .logo{width:26px;height:26px;margin:-3px 6px -3px -6px;background:#fff;border-radius:5px}
@@ -139,7 +140,7 @@ td input{min-height:34px;padding:4px 6px;font-size:14px;width:78px;text-align:ri
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,createUserWithEmailAndPassword,updatePassword,reauthenticateWithCredential,EmailAuthProvider,sendPasswordResetEmail} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {getFirestore,collection,doc,setDoc,deleteDoc,getDoc,onSnapshot,query,where} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import {getFirestore,collection,doc,setDoc,deleteDoc,getDoc,getDocs,onSnapshot,query,where} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {firebaseConfig,LOGIN_DOMAIN,APP_NAME} from './firebase-config.js';
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -165,7 +166,8 @@ let toastT;
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),3200)}
 
 /* ---------- state & Firebase ---------- */
-const COLS=['companies','employees','leaves','payruns','loans','settlements','settings','users','payslips'];
+const COLS=['companies','employees','leaves','payruns','loans','settlements','settings','users','payslips','files'];
+const BLOBS=['photos','fileChunks'];
 const S={};COLS.forEach(c=>S[c]={});
 const DEF={otNormal:25,otNight:50,otRest:50,hourBase:'basic',hourDiv:30,hoursDay:8,alertDays:60,annualBasis:'cal',penEE:11,penER:15,penGov:2.5,penCap:70000,penMin:3000,holidays:[]};
 const ST=()=>Object.assign({},DEF,S.settings.main||{});
@@ -188,12 +190,13 @@ function sub(c,ref){
     schedule();
   },err=>{setBanner('Could not load '+c+': '+errMsg(err));schedule()}));
 }
-function startAdmin(){['companies','employees','leaves','payruns','loans','settlements','settings','users'].forEach(c=>sub(c,collection(fdb,c)))}
+function startAdmin(){['companies','employees','leaves','payruns','loans','settlements','settings','users','files'].forEach(c=>sub(c,collection(fdb,c)))}
 function startEmp(){
   sub('companies',collection(fdb,'companies'));sub('settings',collection(fdb,'settings'));
   sub('employees',doc(fdb,'employees',ME.empId));
   sub('leaves',query(collection(fdb,'leaves'),where('empId','==',ME.empId)));
   sub('payslips',query(collection(fdb,'payslips'),where('empId','==',ME.empId)));
+  sub('files',query(collection(fdb,'files'),where('empId','==',ME.empId)));
 }
 const userEmail=u=>{u=String(u||'').trim().toLowerCase();return u.includes('@')?u:u+'@'+LOGIN_DOMAIN};
 const userName=em=>{em=String(em||'');return em.endsWith('@'+LOGIN_DOMAIN)?em.slice(0,-(LOGIN_DOMAIN.length+1)):em};
@@ -327,9 +330,10 @@ function alerts(){
     if(!e.passportExp&&!e.pension)out.push({d:9999,who:e.name,what:'Passport expiry missing',co:e.companyId,emp:e.id,info:1});
   });
   Object.values(S.companies).forEach(c=>{[['licenseExp','Trade licence'],['estExp','Establishment card']].forEach(([k,n])=>{if(!c[k])return;const d=diff(t,c[k]);if(d<=win)out.push({d,who:c.short||c.name,what:n,date:c[k],co:c.id})})});
+  if(isAdmin())Object.values(S.files).filter(f=>f.status==='review').forEach(f=>{const e=S.employees[f.empId]||{};out.push({d:-99999,review:1,who:e.name||'',what:'New '+((DT[f.docType]||{n:'document'}).n).toLowerCase()+' to check',co:e.companyId,emp:f.empId})});
   return out.filter(a=>CO==='all'||a.co===CO).sort((a,b)=>a.d-b.d);
 }
-const dueTag=a=>a.d===9999?'<span class="tag warn">missing</span>':a.d<0?`<span class="tag bad">expired ${-a.d} d ago</span>`:a.info?`<span class="tag">${a.d} d</span>`:`<span class="tag ${a.d<=30?'acc':'warn'}">in ${a.d} d</span>`;
+const dueTag=a=>a.review?'<span class="tag acc">to review</span>':a.d===9999?'<span class="tag warn">missing</span>':a.d<0?`<span class="tag bad">expired ${-a.d} d ago</span>`:a.info?`<span class="tag">${a.d} d</span>`:`<span class="tag ${a.d<=30?'acc':'warn'}">in ${a.d} d</span>`;
 
 /* ---------- selectors ---------- */
 const emps=()=>Object.values(S.employees);
@@ -447,7 +451,7 @@ V.employees=()=>{
   return`<div class="ph"><h1>Employees <span class="mut" style="font-size:18px">· ${coLabel()}</span></h1><div class="row"><button class="btn" data-act="csvImport">Import CSV</button><button class="btn" data-act="csvExport">Export CSV</button><button class="btn pri" data-act="empEdit" ${cos().length?'':'disabled'}>Add employee</button></div></div>
   <div class="panel"><div class="row" style="margin-bottom:12px"><input id="eq" placeholder="Search name, number, role, passport, Emirates ID…" value="${esc(EF.q)}" style="max-width:420px"><select id="est" style="max-width:180px"><option value="current" ${EF.st==='current'?'selected':''}>Current staff</option><option value="exited" ${EF.st==='exited'?'selected':''}>Exited</option><option value="all" ${EF.st==='all'?'selected':''}>Everyone</option></select><span class="small mut">${list.length} shown</span></div>
   ${list.length?`<div class="scroll"><table class="stack"><thead><tr><th>No.</th><th>Name</th><th>Company</th><th>Designation</th><th>Nationality</th><th>Joined</th><th class="num">Gross (AED)</th><th class="num">Leave bal.</th><th>Status</th><th>Docs</th></tr></thead><tbody>
-  ${list.map(e=>{const a=DOCS.filter(([k])=>e[k]&&diff(today(),e[k])<=num(ST().alertDays)).length,lb=e.join?annualBal(e,today()).bal:0;return`<tr class="click" data-act="empView" data-id="${esc(e.id)}"><td>${esc(e.code)}</td><td><b>${esc(e.name)}</b></td><td>${esc(coName(e.companyId))}</td><td>${esc(e.designation)}</td><td>${esc(e.nationality)}</td><td>${fmtD(e.join)}</td><td class="num">${aed(gross(e))}</td><td class="num">${lb}</td><td>${statusTag(e)}</td><td>${a?`<span class="tag acc">${a} due</span>`:'<span class="tag ok">OK</span>'}</td></tr>`}).join('')}
+  ${list.map(e=>{const a=DOCS.filter(([k])=>e[k]&&diff(today(),e[k])<=num(ST().alertDays)).length,lb=e.join?annualBal(e,today()).bal:0;return`<tr class="click" data-act="empView" data-id="${esc(e.id)}"><td>${esc(e.code)}</td><td><span class="nm">${avatar(e,32)}<b>${esc(e.name)}</b></span></td><td>${esc(coName(e.companyId))}</td><td>${esc(e.designation)}</td><td>${esc(e.nationality)}</td><td>${fmtD(e.join)}</td><td class="num">${aed(gross(e))}</td><td class="num">${lb}</td><td>${statusTag(e)}</td><td>${a?`<span class="tag acc">${a} due</span>`:'<span class="tag ok">OK</span>'}</td></tr>`}).join('')}
   </tbody></table></div>`:`<div class="empty">${all.length?'No employees match this search.':'No employees yet. Add one, or import a CSV for several at once.'}</div>`}</div>`;
 };
 AFTER.employees=()=>{const q=$('#eq');q.oninput=()=>{EF.q=q.value;const p=q.selectionStart;render();const n=$('#eq');n.focus();n.setSelectionRange(p,p)};$('#est').onchange=e=>{EF.st=e.target.value;render()}};
@@ -473,25 +477,27 @@ ACT.empEdit=d=>{
   };
 };
 ACT.empDel=async d=>{const e=S.employees[d.id];if(!e)return;const ok=await ask(`Delete ${e.name} and all of their records? For leavers, use End of service instead so history is kept.`,'Delete');if(!ok)return;
-  for(const l of Object.values(S.leaves).filter(l=>l.empId===d.id))await del('leaves',l.id);for(const u of Object.values(S.users).filter(u=>u.empId===d.id))await del('users',u.id);await del('employees',d.id);toast('Deleted')};
+  for(const l of Object.values(S.leaves).filter(l=>l.empId===d.id))await del('leaves',l.id);for(const u of Object.values(S.users).filter(u=>u.empId===d.id))await del('users',u.id);for(const f of fileList(d.id))await delFile(f);if(e.thumb)await del('photos',d.id);await del('employees',d.id);toast('Deleted')};
 ACT.empView=d=>{
   const e=S.employees[d.id];if(!e)return;const t=today(),g=gratuity(e,t),lb=annualBal(e,t),su=sickUsed(e,t);
   const leaves=Object.values(S.leaves).filter(l=>l.empId===e.id).sort((a,b)=>a.from<b.from?1:-1);
   const loans=Object.values(S.loans).filter(l=>l.empId===e.id);
   const runs=Object.values(S.payruns).filter(p=>p.status==='final').map(p=>({p,L:(p.lines||[]).find(L=>L.empId===e.id)})).filter(x=>x.L).sort((a,b)=>a.p.month<b.p.month?1:-1);
-  openModal(e.name,`<div class="row" style="margin:-6px 0 14px">${statusTag(e)}<span class="mut small">${esc(e.code)} · ${esc(e.designation||'')} · ${esc(coName(e.companyId))}</span></div>
-  <div class="tabs" id="et"><button class="on" data-t="0">Summary</button><button data-t="1">Documents</button><button data-t="2">Leave (${leaves.length})</button><button data-t="3">Payslips (${runs.length})</button><button data-t="4">Loans (${loans.length})</button></div>
+  openModal(e.name,`<div class="row" style="margin:-6px 0 14px;gap:14px">${avatar(e,64)}<div><div class="row">${statusTag(e)}<span class="mut small">${[e.code,e.designation,coName(e.companyId)].filter(Boolean).map(esc).join(' · ')}</span></div><div class="row" style="margin-top:6px"><button class="btn sm" data-act="photoUp" data-id="${esc(e.id)}">${e.thumb?'Change photo':'Add photo'}</button>${e.thumb?`<button class="btn sm" data-act="photoDl" data-id="${esc(e.id)}">Download photo</button>`:''}</div></div></div>
+  <div class="tabs" id="et"><button class="on" data-t="0">Summary</button><button data-t="1">Documents</button><button data-t="2">Leave (${leaves.length})</button><button data-t="3">Payslips (${runs.length})</button><button data-t="4">Loans (${loans.length})</button><button data-t="5">Files (${fileList(e.id).length})${fileList(e.id).some(f=>f.status==='review')?' •':''}</button></div>
   <div data-p="0"><div class="grid g3">
     <div><h3>Service</h3><dl class="dl"><dt>Joined</dt><dd>${fmtD(e.join)}</dd><dt>Probation ends</dt><dd>${fmtD(probEnd(e))}</dd><dt>Contract ends</dt><dd>${fmtD(e.contractEnd)}</dd><dt>Net service</dt><dd>${(netService(e,t)/365).toFixed(2)} yrs</dd><dt>Unpaid days excluded</dt><dd>${exclDays(e,t)}</dd><dt>Notice period</dt><dd>${num(e.notice)||30} days</dd></dl></div>
     <div><h3>Pay (AED / month)</h3><dl class="dl"><dt>Basic</dt><dd>${aed(e.basic)}</dd><dt>Housing</dt><dd>${aed(e.housing)}</dd><dt>Transport</dt><dd>${aed(e.transport)}</dd><dt>Other</dt><dd>${aed(e.otherAllow)}</dd><dt class="tot">Gross</dt><dd class="tot">${aed(gross(e))}</dd><dt>Payment</dt><dd>${esc(e.payMethod==='cash'?'Outside WPS':'WPS')}${e.iban?' · '+esc(e.iban.slice(-4)):''}</dd></dl></div>
     <div><h3>Entitlements today</h3><dl class="dl"><dt>Annual leave accrued</dt><dd>${lb.acc} d</dd><dt>Taken / booked</dt><dd>${lb.taken} / ${lb.booked} d</dd>${lb.od?`<dt>Go-live balance (${fmtD(lb.od)})</dt><dd>${num(e.leaveOpen)} d</dd>`:''}<dt>Adjustment</dt><dd>${lb.adj} d</dd><dt class="tot">Leave balance</dt><dd class="tot">${lb.bal} d</dd><dt>Sick leave this service year</dt><dd>${su} / 90 d</dd><dt class="tot">Gratuity accrued</dt><dd class="tot">AED ${aed(g.amt)}</dd></dl><p class="small mut">${esc(g.note)} ${esc(lb.earlyNote)}</p></div>
   </div></div>
-  <div data-p="1" hidden><table class="stack"><thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead><tbody>${[['Passport',e.passportNo,e.passportExp],['Residence visa',e.visaNo,e.visaExp],['Emirates ID',e.eidNo,e.eidExp],['Work permit',e.permitNo,e.permitExp],['Health insurance',e.insurer,e.insExp],['ILOE insurance','',e.iloeExp],['Employment contract','',e.contractEnd]].map(([n,no,x])=>{const dd=x?diff(t,x):null;return`<tr><td>${n}</td><td>${esc(no||'—')}</td><td>${fmtD(x)}</td><td>${x==null?'<span class="tag warn">not recorded</span>':dd<0?'<span class="tag bad">expired</span>':dd<=num(ST().alertDays)?`<span class="tag acc">${dd} d left</span>`:'<span class="tag ok">valid</span>'}</td></tr>`}).join('')}</tbody></table></div>
+  <div data-p="1" hidden><table class="stack"><thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead><tbody>${[['Passport',e.passportNo,e.passportExp],['Residence visa',e.visaNo,e.visaExp],['Emirates ID',e.eidNo,e.eidExp],['Work permit',e.permitNo,e.permitExp],['Health insurance',e.insurer,e.insExp],['ILOE insurance','',e.iloeExp],['Employment contract','',e.contractEnd]].map(([n,no,x])=>{const dd=x?diff(t,x):null;return`<tr><td>${n}</td><td>${esc(no||'—')}</td><td>${fmtD(x)}</td><td>${!x?'<span class="tag warn">not recorded</span>':dd<0?'<span class="tag bad">expired</span>':dd<=num(ST().alertDays)?`<span class="tag acc">${dd} d left</span>`:'<span class="tag ok">valid</span>'}</td></tr>`}).join('')}</tbody></table></div>
   <div data-p="2" hidden>${leaves.length?`<table class="stack"><thead><tr><th>Type</th><th>From</th><th>To</th><th class="num">Days</th><th>Status</th></tr></thead><tbody>${leaves.map(l=>`<tr><td>${esc((LT[l.type]||{}).n)}</td><td>${fmtD(l.from)}</td><td>${fmtD(l.to)}</td><td class="num">${counted(l,e).length}</td><td>${esc(l.status)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">No leave recorded.</div>'}</div>
   <div data-p="3" hidden>${runs.length?`<table class="stack"><thead><tr><th>Month</th><th class="num">Earnings</th><th class="num">Deductions</th><th class="num">Net</th><th></th></tr></thead><tbody>${runs.map(({p,L})=>`<tr><td>${monthName(p.month)}</td><td class="num">${aed(L.earn)}</td><td class="num">${aed(L.ded+L.leaveDed)}</td><td class="num"><b>${aed(L.net)}</b></td><td><button class="btn sm" data-act="slip" data-run="${esc(p.id)}" data-emp="${esc(e.id)}">Payslip</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty">No finalised payroll yet.</div>'}</div>
-  <div data-p="4" hidden>${loans.length?`<table class="stack"><thead><tr><th>Type</th><th>Issued</th><th class="num">Amount</th><th class="num">Instalment</th><th class="num">Balance</th></tr></thead><tbody>${loans.map(l=>`<tr><td>${esc(l.kind)}</td><td>${fmtD(l.date)}</td><td class="num">${aed(l.amount)}</td><td class="num">${aed(l.installment)}</td><td class="num">${aed(loanBal(l))}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">No loans or advances.</div>'}</div>`,
+  <div data-p="4" hidden>${loans.length?`<table class="stack"><thead><tr><th>Type</th><th>Issued</th><th class="num">Amount</th><th class="num">Instalment</th><th class="num">Balance</th></tr></thead><tbody>${loans.map(l=>`<tr><td>${esc(l.kind)}</td><td>${fmtD(l.date)}</td><td class="num">${aed(l.amount)}</td><td class="num">${aed(l.installment)}</td><td class="num">${aed(loanBal(l))}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">No loans or advances.</div>'}</div>
+  <div data-p="5" hidden><div class="row" style="justify-content:space-between;margin-bottom:10px"><span class="small mut">Scans of passport, visa, Emirates ID, contract and other papers. Stored in your Firebase database; only HR and this employee can open them.</span><button class="btn sm pri" data-act="fileUp" data-emp="${esc(e.id)}">Upload document</button></div>${filesTable(e.id,true)}</div>`,
   `<button class="btn" data-act="leaveNew" data-emp="${esc(e.id)}">Record leave</button>${e.status!=='exited'?`<a class="btn" href="#settlement" data-act="goSettle" data-id="${esc(e.id)}">End of service</a>`:''}<button class="btn" data-act="login" data-id="${esc(e.id)}">Portal login${loginOf(e.id)?'':' …'}</button><button class="btn pri" data-act="empEdit" data-id="${esc(e.id)}">Edit</button>`);
   $('#et').onclick=ev=>{const b=ev.target.closest('button');if(!b)return;md.querySelectorAll('#et button').forEach(x=>x.classList.toggle('on',x===b));md.querySelectorAll('[data-p]').forEach(p=>p.hidden=p.dataset.p!==b.dataset.t)};
+  if(d.tab){const tb=md.querySelector(`#et button[data-t="${d.tab}"]`);tb&&tb.click()}
 };
 
 /* CSV */
@@ -713,14 +719,16 @@ V.setup=()=>{const st=ST();return`<div class="ph"><h1>Setup &amp; data</h1></div
   <table><tbody>${(st.holidays||[]).slice().sort((a,b)=>a.date<b.date?-1:1).map(h=>`<tr><td>${fmtD(h.date)}</td><td>${esc(h.name)}${h.expected?' <span class="tag warn">expected</span>':''}</td><td><button class="btn sm del" data-act="holDel" data-d="${esc(h.date)}">Remove</button></td></tr>`).join('')||'<tr><td class="mut">No holidays recorded.</td></tr>'}</tbody></table>
   <div class="row" style="margin-top:10px"><input type="date" id="hd" style="width:auto"><input id="hn" placeholder="Holiday name" style="max-width:220px"><button class="btn" data-act="holAdd">Add</button></div></div></div>
  <div class="panel"><h2 style="margin-bottom:8px">Backup &amp; restore</h2><p class="small">Data is kept in your Firebase project (Cloud Firestore). Only HR admins can read salaries and documents; employees see only their own record. Download a full backup monthly and keep it somewhere safe.</p>
-  <div class="row"><button class="btn" data-act="bkDl">Download full backup (JSON)</button><label class="btn">Restore from backup<input type="file" id="bkF" accept=".json,application/json" hidden></label></div></div>`};
+  <p class="small mut">Photos and document files use about ${kb(Object.values(S.files).reduce((a,f)=>a+num(f.size),0)+emps().filter(e=>e.thumb).length*60000)} of the free plan’s 1 GB database storage.</p><div class="row"><label class="row small"><input type="checkbox" id="bkFiles" checked> Include photos &amp; document files</label><button class="btn" data-act="bkDl">Download full backup (JSON)</button><label class="btn">Restore from backup<input type="file" id="bkF" accept=".json,application/json" hidden></label></div></div>`};
 AFTER.setup=()=>{const f=$('#bkF');f&&(f.onchange=async ev=>{const fl=ev.target.files[0];if(!fl)return;let j;try{j=JSON.parse(await fl.text())}catch(e){toast('Not a valid backup file');return}
-  const n=COLS.filter(c=>c!=='users').reduce((s,c)=>s+Object.keys(j[c]||{}).length,0);if(!(await ask(`Restore ${n} records? Records with the same id are overwritten; others are kept.`,'Restore')))return;let k=0;
-  for(const c of COLS.filter(c=>c!=='users'))for(const v of Object.values(j[c]||{})){if(v&&v.id){try{await put(c,v);k++}catch(e){}}}toast(k+' records restored')})};
+  const n=COLS.filter(c=>c!=='users').concat(BLOBS).reduce((s,c)=>s+Object.keys(j[c]||{}).length,0);if(!(await ask(`Restore ${n} records? Records with the same id are overwritten; others are kept.`,'Restore')))return;let k=0;
+  for(const c of BLOBS.concat(COLS.filter(c=>c!=='users')))for(const v of Object.values(j[c]||{})){if(v&&v.id){try{await put(c,v);k++}catch(e){}}}toast(k+' records restored')})};
 ACT.stSave=async()=>{const v=Object.assign(clean(S.settings.main||{id:'main'}),readForm($('#stf')),{id:'main'});v.holidays=ST().holidays;try{await put('settings',v);toast('Rules saved')}catch(e){}};
 ACT.holAdd=async()=>{const d=$('#hd').value,n=$('#hn').value.trim();if(!d||!n){toast('Enter a date and a name');return}const v=Object.assign({},ST(),clean(S.settings.main||{}),{id:'main'});v.holidays=(v.holidays||[]).filter(h=>h.date!==d).concat({date:d,name:n});try{await put('settings',v)}catch(e){}};
 ACT.holDel=async d=>{const v=Object.assign({},ST(),clean(S.settings.main||{}),{id:'main'});v.holidays=(v.holidays||[]).filter(h=>h.date!==d.d);try{await put('settings',v)}catch(e){}};
-ACT.bkDl=()=>{const o={exported:new Date().toISOString()};COLS.filter(c=>c!=='users').forEach(c=>o[c]=S[c]);download('hr-backup-'+today()+'.json',JSON.stringify(o,null,1))};
+ACT.bkDl=async()=>{const o={exported:new Date().toISOString()};COLS.filter(c=>c!=='users').forEach(c=>o[c]=S[c]);
+  const withFiles=$('#bkFiles')&&$('#bkFiles').checked;if(withFiles){toast('Collecting photos and document files…');try{for(const c of BLOBS){const q=await getDocs(collection(fdb,c));o[c]={};q.docs.forEach(d=>o[c][d.id]=Object.assign({},d.data(),{id:d.id}))}}catch(e){toast('Could not read files: '+errMsg(e));return}}
+  download('hr-backup-'+today()+(withFiles?'-with-files':'')+'.json',JSON.stringify(o))};
 
 /* Law guide */
 const LAW=[
@@ -746,6 +754,66 @@ const LAW=[
  ['Penalties','Fines for violations raised up to AED 1,000,000 for serious breaches such as fake Emiratisation.','FDL 9/2024']
 ];
 V.law=()=>`<div class="ph"><h1>UAE Labour Law guide</h1></div><div class="panel"><div class="scroll"><table class="stack law"><thead><tr><th>Topic</th><th>Rule used by this system</th><th>Reference</th></tr></thead><tbody>${LAW.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td class="small mut">${r[2]}</td></tr>`).join('')}</tbody></table></div><p class="small mut">A working summary for HR staff, not legal advice. Laws and ministerial resolutions change; check MOHRE (mohre.gov.ae) or your free-zone authority for the current text.</p></div>`;
+
+/* ---------- employee photos & document files (kept in Firestore, split into parts) ---------- */
+const DOC_TYPES=[['passport','Passport','passportExp'],['visa','Residence visa','visaExp'],['eid','Emirates ID','eidExp'],['permit','Work permit / labour card','permitExp'],['contract','Labour contract','contractEnd'],['offer','Offer letter'],['insurance','Health insurance card','insExp'],['iloe','ILOE certificate','iloeExp'],['education','Educational certificate'],['medical','Medical fitness certificate'],['licence','Driving licence'],['bank','Bank / salary letter'],['warning','Warning / disciplinary letter'],['other','Other']];
+const DT=Object.fromEntries(DOC_TYPES.map(([k,n,f])=>[k,{n,f}]));
+const CHUNK=900000,MAXF=5*1024*1024;
+const fileList=empId=>Object.values(S.files).filter(f=>f.empId===empId).sort((a,b)=>String(b.created||'').localeCompare(String(a.created||'')));
+const localDay=v=>{const x=new Date(v);return isNaN(x)?'':iso(new Date(Date.UTC(x.getFullYear(),x.getMonth(),x.getDate())))};
+const kb=n=>n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round((n||0)/1024))+' KB';
+const avatar=(e,s)=>e&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(e.thumb||'')?`<img class="av" src="${e.thumb}" style="width:${s}px;height:${s}px" alt="">`:`<span class="av mono" style="width:${s}px;height:${s}px;font-size:${Math.round(s*.38)}px">${esc(initials({short:(e&&e.name)||'?'}))}</span>`;
+function readAsDataURL(blob){return new Promise((r,j)=>{const f=new FileReader();f.onload=()=>r(f.result);f.onerror=()=>j(new Error('Could not read the file.'));f.readAsDataURL(blob)})}
+function loadImg(file){return new Promise((r,j)=>{const u=URL.createObjectURL(file),i=new Image();i.onload=()=>{r(i);setTimeout(()=>URL.revokeObjectURL(u),1000)};i.onerror=()=>j(new Error('This image format can’t be read here. Save it as JPG, PNG or PDF and try again.'));i.src=u})}
+function drawJpeg(img,max,q,square){let w=img.naturalWidth,h=img.naturalHeight,sx=0,sy=0,sw=w,sh=h;if(square){const m=Math.min(w,h);sx=(w-m)/2;sy=(h-m)/2;sw=sh=w=h=m}
+  const k=Math.min(1,max/Math.max(w,h)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(w*k));cv.height=Math.max(1,Math.round(h*k));const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,cv.width,cv.height);g.drawImage(img,sx,sy,sw,sh,0,0,cv.width,cv.height);return cv.toDataURL('image/jpeg',q)}
+async function prepFile(file){
+  if(/^image\//.test(file.type)&&!/svg/.test(file.type)){const img=await loadImg(file);let d=drawJpeg(img,2000,.82);if(d.length>1.6e6)d=drawJpeg(img,1600,.72);return{mime:'image/jpeg',data:d.split(',')[1]}}
+  if(file.size>MAXF)throw new Error(`This file is ${kb(file.size)}; the limit is 5 MB. Compress the PDF or scan at a lower resolution, then try again.`);
+  const d=await readAsDataURL(file);return{mime:file.type||'application/octet-stream',data:d.split(',')[1]||''}}
+async function saveFile(meta,file){
+  const p=await prepFile(file),n=Math.max(1,Math.ceil(p.data.length/CHUNK));
+  if(n>8)throw new Error('This file is too large after conversion. Use a smaller scan.');
+  const id=uid(),m=Object.assign({},meta,{id,mime:p.mime,size:Math.round(p.data.length*3/4),chunks:n,name:String(file.name||'file').slice(0,120),created:new Date().toISOString(),uploadedBy:ME.uid,byRole:ME.role==='admin'?'admin':'employee'});
+  for(let i=0;i<n;i++)await put('fileChunks',{id:id+'_'+i,fileId:id,empId:m.empId,i,data:p.data.slice(i*CHUNK,(i+1)*CHUNK)});
+  await put('files',m);return m;
+}
+async function fileBlob(f){let s='';for(let i=0;i<f.chunks;i++){const d=await getDoc(doc(fdb,'fileChunks',f.id+'_'+i));if(!d.exists())throw new Error('Part of this file is missing.');s+=d.data().data}
+  const bin=atob(s),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:f.mime})}
+async function delFile(f){for(let i=0;i<(f.chunks||0);i++)await del('fileChunks',f.id+'_'+i);await del('files',f.id)}
+function filesTable(empId,adm){const fs=fileList(empId);
+  return fs.length?`<div class="scroll"><table class="stack"><thead><tr><th>Document</th><th>File</th><th>Expiry</th><th>Uploaded</th><th></th></tr></thead><tbody>${fs.map(f=>`<tr><td>${esc((DT[f.docType]||{n:'Document'}).n)}${f.status==='review'?' <span class="tag acc">awaiting HR check</span>':''}${f.note?`<div class="small mut">${esc(f.note)}</div>`:''}</td><td class="small">${esc(f.name)} · ${kb(f.size)}</td><td>${fmtD(f.expiry)}</td><td class="small">${fmtD(localDay(f.created))}${f.byRole==='employee'?' · by employee':''}</td><td><div class="row"><button class="btn sm" data-act="fileView" data-id="${esc(f.id)}">View</button>${adm&&f.status==='review'?`<button class="btn sm" data-act="fileOk" data-id="${esc(f.id)}">Accept</button>`:''}${adm?`<button class="btn sm del" data-act="fileDel" data-id="${esc(f.id)}">Delete</button>`:''}</div></td></tr>`).join('')}</tbody></table></div>`
+  :'<div class="empty">No documents uploaded yet.</div>'}
+let viewUrl=null;
+ACT.fileView=async d=>{const f=S.files[d.id];if(!f)return;const back=isAdmin()?f.empId:'';
+  openModal((DT[f.docType]||{n:'Document'}).n+' — '+f.name,'<div class="empty">Loading the document…</div>',back?`<button class="btn" data-act="empView" data-id="${esc(back)}">Back to employee</button>`:'');
+  try{const b=await fileBlob(f);if(!$('#mb'))return;if(viewUrl)URL.revokeObjectURL(viewUrl);viewUrl=URL.createObjectURL(b);
+    $('#mb').innerHTML=(/^image\//.test(f.mime)?`<img src="${viewUrl}" style="max-width:100%;border-radius:8px;background:#fff" alt="">`:f.mime==='application/pdf'?`<iframe src="${viewUrl}" style="width:100%;height:70vh;border:0;border-radius:8px;background:#fff" title="Document"></iframe>`:'<p>No preview for this file type — download it to open.</p>')+`<div class="row" style="margin-top:12px"><a class="btn pri" href="${viewUrl}" download="${esc(f.name)}">Download</a></div>`}
+  catch(e){if($('#mb'))$('#mb').innerHTML='<p class="warnl">Could not load this document: '+esc(e&&e.code?errMsg(e):(e&&e.message)||'error')+'</p>'}};
+ACT.fileUp=d=>{const adm=isAdmin(),e=S.employees[adm?d.emp:ME.empId];if(!e)return;
+  openModal(adm?'Upload document — '+e.name:'Upload a renewed document',`<div class="form" id="uf"><label class="f"><span class="req">Document type</span><select data-k="docType">${DOC_TYPES.map(([k,n])=>`<option value="${k}">${esc(n)}</option>`).join('')}</select></label><label class="f">Expiry date<input type="date" data-k="expiry"></label><label class="f wide">Note<input data-k="note" maxlength="200"></label><label class="f wide"><span class="req">File — PDF, JPG or PNG, up to 5 MB (photos are compressed)</span><input type="file" id="ufFile" accept="application/pdf,image/*"></label></div>
+   <p class="small mut">${adm?'An expiry date entered for a passport, visa, Emirates ID, work permit, contract, health insurance or ILOE also updates the employee record and its expiry alerts.':'HR will check the document and update your record.'}</p><div id="ufMsg" class="small"></div>`,
+   `<button class="btn" data-act="close">Cancel</button><button class="btn pri" id="ufGo">Upload</button>`);
+  $('#ufGo').onclick=async()=>{const v=readForm($('#uf')),file=$('#ufFile').files[0];if(!file){$('#ufMsg').textContent='Choose a file.';return}
+    $('#ufGo').disabled=true;$('#ufMsg').textContent='Uploading…';
+    try{await saveFile({empId:e.id,docType:v.docType,expiry:v.expiry||'',note:v.note||'',status:adm?'ok':'review'},file);
+      const k=(DT[v.docType]||{}).f;if(adm&&v.expiry&&k)await put('employees',Object.assign(clean(S.employees[e.id]),{[k]:v.expiry}));
+      toast(adm?'Document saved':'Sent to HR for checking');adm?ACT.empView({id:e.id,tab:'5'}):closeModal()}
+    catch(x){$('#ufMsg').innerHTML='<span class="warnl">'+esc(x&&x.code?'Upload failed: '+errMsg(x):(x&&x.message)||'Upload failed')+'</span>';$('#ufGo').disabled=false}};
+};
+ACT.fileOk=async d=>{const f=clean(S.files[d.id]);if(!f)return;f.status='ok';f.reviewedBy=ME.uid;f.reviewed=today();
+  try{await put('files',f);const k=(DT[f.docType]||{}).f;if(f.expiry&&k)await put('employees',Object.assign(clean(S.employees[f.empId]),{[k]:f.expiry}));toast('Document accepted'+(f.expiry&&k?' and expiry date updated':''));ACT.empView({id:f.empId,tab:'5'})}catch(e){}};
+ACT.fileDel=async d=>{const f=S.files[d.id];if(!f)return;if(!(await ask(`Delete ${f.name}? This cannot be undone.`,'Delete')))return;try{await delFile(f);toast('Document deleted')}catch(e){}ACT.empView({id:f.empId,tab:'5'})};
+ACT.photoUp=d=>{const e=S.employees[d.id];if(!e)return;
+  openModal('Photo — '+e.name,`<div class="row" style="gap:16px;align-items:center"><div id="phPrev">${avatar(e,120)}</div><div style="flex:1"><p class="small">Use a clear, front-facing passport-style photo. It is cropped to a square and compressed.</p><label class="f">Photo<input type="file" id="phF" accept="image/*"></label></div></div><div id="phMsg" class="small"></div>`,
+   `${e.thumb?'<button class="btn del" id="phRm">Remove photo</button>':''}<button class="btn" data-act="empView" data-id="${esc(e.id)}">Cancel</button><button class="btn pri" id="phGo">Save photo</button>`);
+  let full='',thumb='';
+  $('#phF').onchange=async ev=>{const f=ev.target.files[0];if(!f)return;try{const img=await loadImg(f);full=drawJpeg(img,480,.85,true);thumb=drawJpeg(img,128,.8,true);$('#phPrev').innerHTML=`<img class="av" src="${thumb}" style="width:120px;height:120px" alt="">`}catch(x){$('#phMsg').innerHTML='<span class="warnl">'+esc(x.message)+'</span>'}};
+  $('#phGo').onclick=async()=>{if(!full){$('#phMsg').textContent='Choose a photo first.';return}$('#phGo').disabled=true;
+    try{await put('photos',{id:e.id,empId:e.id,data:full});await put('employees',Object.assign(clean(S.employees[e.id]),{thumb}));toast('Photo saved');ACT.empView({id:e.id})}catch(x){$('#phGo').disabled=false}};
+  if(e.thumb)$('#phRm').onclick=async()=>{try{await del('photos',e.id);await put('employees',Object.assign(clean(S.employees[e.id]),{thumb:''}));toast('Photo removed');ACT.empView({id:e.id})}catch(x){}};
+};
+ACT.photoDl=async d=>{try{const p=await getDoc(doc(fdb,'photos',d.id));if(!p.exists()){toast('No full-size photo on file');return}const e=S.employees[d.id]||{},data=String(p.data().data||'');if(!data.startsWith('data:image/jpeg;base64,')){toast('Photo is not valid');return}const a=document.createElement('a');a.href=data;a.download=`photo-${e.code||d.id}.jpg`;document.body.appendChild(a);a.click();a.remove()}catch(e){toast('Could not load the photo: '+errMsg(e))}};
 
 /* ---------- shared leave checks ---------- */
 function leaveCheck(v,e,lid){
@@ -804,9 +872,10 @@ ACT.mySlip=d=>{const p=S.payslips[d.id];if(!p)return;const cco=S.companies[p.com
 PV['my-profile']=()=>{
   const e=myEmp();if(!e)return waitMsg;const t=today();
   const docs=[['Passport',e.passportNo,e.passportExp],['Residence visa',e.visaNo,e.visaExp],['Emirates ID',e.eidNo,e.eidExp],['Work permit',e.permitNo,e.permitExp],['Health insurance',e.insurer,e.insExp],['ILOE insurance','',e.iloeExp]];
-  return`<div class="ph"><h1>My profile</h1></div><div class="grid g2">
+  return`<div class="ph"><span class="nm">${avatar(e,56)}<h1>My profile</h1></span></div><div class="grid g2">
   <div class="panel"><h2 style="margin-bottom:10px">Employment</h2><dl class="dl"><dt>Employee no.</dt><dd>${esc(e.code)}</dd><dt>Company</dt><dd>${esc(coName(e.companyId))}</dd><dt>Designation</dt><dd>${esc(e.designation||'—')}</dd><dt>Department</dt><dd>${esc(e.department||'—')}</dd><dt>Joined</dt><dd>${fmtD(e.join)}</dd><dt>Contract ends</dt><dd>${fmtD(e.contractEnd)}</dd><dt>Notice period</dt><dd>${num(e.notice)||30} days</dd><dt>Service</dt><dd>${(netService(e,t)/365).toFixed(1)} years</dd><dt>Salary account</dt><dd>${e.iban?'•••• '+esc(e.iban.slice(-4)):'—'}</dd></dl></div>
-  <div class="panel"><h2 style="margin-bottom:10px">My documents</h2><table class="stack"><thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead><tbody>${docs.map(([n,no,x])=>{const dd=x?diff(t,x):null;return`<tr><td>${n}</td><td>${esc(no||'—')}</td><td>${fmtD(x)}</td><td>${x==null?'<span class="tag">not on file</span>':dd<0?'<span class="tag bad">expired</span>':dd<=60?`<span class="tag acc">${dd} days left</span>`:'<span class="tag ok">valid</span>'}</td></tr>`}).join('')}</tbody></table><p class="small mut">Renew documents before they expire and give HR the new copy. If anything here is wrong, tell HR.</p></div></div>
+  <div class="panel"><h2 style="margin-bottom:10px">My documents</h2><table class="stack"><thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead><tbody>${docs.map(([n,no,x])=>{const dd=x?diff(t,x):null;return`<tr><td>${n}</td><td>${esc(no||'—')}</td><td>${fmtD(x)}</td><td>${!x?'<span class="tag">not on file</span>':dd<0?'<span class="tag bad">expired</span>':dd<=60?`<span class="tag acc">${dd} days left</span>`:'<span class="tag ok">valid</span>'}</td></tr>`}).join('')}</tbody></table><p class="small mut">Renew documents before they expire and upload the new copy below. If anything here is wrong, tell HR.</p></div></div>
+  <div class="panel"><div class="ph"><h2>My document files</h2><button class="btn pri" data-act="fileUp">Upload renewed document</button></div>${filesTable(e.id,false)}</div>
   <div class="panel"><h2 style="margin-bottom:10px">Change password</h2><div class="form" id="pwf"><label class="f">Current password<input type="password" id="pw0" autocomplete="current-password"></label><label class="f">New password (8+ characters)<input type="password" id="pw1" autocomplete="new-password"></label><label class="f">Repeat new password<input type="password" id="pw2" autocomplete="new-password"></label></div><div class="row" style="margin-top:12px"><button class="btn pri" data-act="myPw">Change password</button><span id="pwMsg" class="small"></span></div></div>`;
 };
 ACT.myPw=async()=>{const a=$('#pw0').value,b=$('#pw1').value,c=$('#pw2').value,m=$('#pwMsg');

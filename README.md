@@ -24,7 +24,7 @@ data even if they tamper with the web page.
 | `index.html` | The whole app |
 | `firebase-config.js` | Your Firebase project settings. **Edit this.** |
 | `firestore.rules` | Database security rules. Paste into the Firebase console. |
-| `firebase.json` | Only needed if you deploy the rules with the Firebase CLI |
+| `firebase.json`, `firestore.indexes.json` | Only needed if you deploy with the Firebase CLI |
 | `logos/` | CityCube mark (app logo and favicon) and the CityCube Warehousing and CityCube General Trading logos. Upload this folder too. |
 
 ---
@@ -105,6 +105,28 @@ You can also disable or re-enable any login under **Portal logins**.
 3. HR clicks **Approve** or **Reject**. The employee sees the result straight away. Approved unpaid, sick or maternity
    days flow into payroll deductions and into the leave balance.
 4. While a request is still pending, the employee can cancel it. They cannot approve or change it.
+
+## Employee photos and document files
+Photos and scans (passport, visa, Emirates ID, contract, certificates and so on) are stored **inside the Firestore
+database**, so everything stays on the free Spark plan. Firebase's separate file storage service now needs the paid
+Blaze plan.
+
+- **Photo:** open the employee → **Add photo**. It's cropped square and compressed. A small copy shows in lists and
+  the employee portal; **Download photo** gives the 480 px version.
+- **Documents:** open the employee → **Files** tab → **Upload document**. PDF, JPG or PNG, up to 5 MB.
+  Photos of documents are compressed automatically to about 0.3–1 MB. Larger files are split into parts behind
+  the scenes. If you give an expiry date for a passport, visa, Emirates ID, work permit, contract, health insurance
+  or ILOE, the employee's record and the expiry alerts update too.
+- **Employees** can view their own files under **My profile** and upload renewed documents. These arrive marked
+  *awaiting HR check* and show on the dashboard. **Accept** applies the new expiry date; **Delete** removes the file.
+  Only HR and the employee themself can open a file.
+- **Space:** the free plan includes 1 GB of database storage. **Setup & data** shows how much the files use.
+  As a guide, 300 employees with a photo and 8 compressed scans each comes to roughly 0.5–1 GB, so keep
+  scans compact: phone photos or 150 dpi PDFs. If you outgrow it, move to Blaze (pay-as-you-go).
+- **Optional, saves space:** in **Firestore → Indexes → Single field → Add exemption**, turn off indexing for
+  the field `data` in collections `fileChunks` and `photos`, and `thumb` in `employees`.
+  (`firestore.indexes.json` does the same if you use the Firebase CLI.)
+- **Backups:** **Download full backup** includes photos and files unless you untick that option.
 
 ## Payslips
 When HR clicks **Finalise payroll**, every employee's payslip is published to their **My payslips** page.

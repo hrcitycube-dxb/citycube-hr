@@ -76,6 +76,42 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Document files: metadata in /files, contents split into /fileChunks (max ~900 KB each).
+    // Employees may read their own and upload new ones for HR to check; only HR edits or deletes.
+    match /files/{id} {
+      allow read: if isAdmin() || (isEmployee() && resource.data.empId == myEmpId());
+      allow create: if isAdmin() || (
+        isEmployee()
+        && request.resource.data.id == id
+        && request.resource.data.empId == myEmpId()
+        && request.resource.data.status == 'review'
+        && request.resource.data.byRole == 'employee'
+        && request.resource.data.uploadedBy == request.auth.uid
+        && request.resource.data.chunks is int
+        && request.resource.data.chunks >= 1 && request.resource.data.chunks <= 8
+        && request.resource.data.keys().hasOnly(['id','empId','docType','expiry','note','status','mime','size','chunks','name','created','uploadedBy','byRole','updatedAt'])
+      );
+      allow update, delete: if isAdmin();
+    }
+    match /fileChunks/{id} {
+      allow read: if isAdmin() || (isEmployee() && resource.data.empId == myEmpId());
+      allow create: if isAdmin() || (
+        isEmployee()
+        && request.resource.data.id == id
+        && request.resource.data.empId == myEmpId()
+        && request.resource.data.data is string
+        && request.resource.data.data.size() <= 900000
+        && request.resource.data.keys().hasOnly(['id','fileId','empId','i','data','updatedAt'])
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // Full-size employee photos (a small copy is kept on the employee record).
+    match /photos/{id} {
+      allow read: if isAdmin() || (isEmployee() && id == myEmpId());
+      allow write: if isAdmin();
+    }
+
     // HR-only data.
     match /payruns/{id}     { allow read, write: if isAdmin(); }
     match /loans/{id}       { allow read, write: if isAdmin(); }
