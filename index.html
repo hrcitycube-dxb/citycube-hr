@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12305e">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="CityCube HR">
+<link rel="apple-touch-icon" href="logos/apple-touch-icon.png">
 <title>CityCube Group HR</title>
 <link rel="icon" type="image/png" href="logos/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,6 +28,18 @@
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
 [hidden]{display:none!important}
+body{padding-top:env(safe-area-inset-top)}
+.emp .rail a{justify-content:flex-start;gap:12px}.rail a svg{width:20px;height:20px;flex:none}
+.install{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-color:var(--acc)}
+.upl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+@media(max-width:900px){
+ .emp .rail{position:fixed;top:auto;bottom:0;left:0;right:0;height:auto;flex-direction:row;justify-content:space-around;overflow:visible;padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:30;box-shadow:0 -1px 0 #0003}
+ .emp .rail a{flex:1;flex-direction:column;justify-content:center;align-items:center;gap:3px;font-size:11.5px;padding:6px 2px;min-height:54px;text-align:center}
+ .emp .rail a svg{width:23px;height:23px}
+ .emp main{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+ .emp .cos .chip{max-width:62vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media(max-width:600px){#who{display:none}.emp .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.modal{padding:16px}.ov{padding:2vh 8px}}
 .av{border-radius:50%;object-fit:cover;flex:none;display:inline-grid;place-items:center}.nm{display:flex;align-items:center;gap:10px}
 .brand{display:flex;align-items:center;gap:10px}.brand img{width:40px;height:40px;flex:none;background:#fff;border-radius:10px;padding:3px}
 .lgbox .mark{width:84px;height:84px;display:block;margin-bottom:14px}
@@ -140,7 +159,7 @@ td input{min-height:34px;padding:4px 6px;font-size:14px;width:78px;text-align:ri
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,createUserWithEmailAndPassword,updatePassword,reauthenticateWithCredential,EmailAuthProvider,sendPasswordResetEmail} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {getFirestore,collection,doc,setDoc,deleteDoc,getDoc,getDocs,onSnapshot,query,where} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import {getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,terminate,clearIndexedDbPersistence,collection,doc,setDoc,deleteDoc,getDoc,getDocs,onSnapshot,query,where} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {firebaseConfig,LOGIN_DOMAIN,APP_NAME} from './firebase-config.js';
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -176,11 +195,14 @@ function setCO(v){CO=v;try{localStorage.setItem('hr-co',v)}catch(e){}render()}
 const clean=o=>JSON.parse(JSON.stringify(o));
 const CONFIGURED=!!(firebaseConfig&&firebaseConfig.apiKey&&firebaseConfig.projectId&&!/YOUR_/.test(firebaseConfig.apiKey));
 let fbApp=null,auth=null,fdb=null;
-if(CONFIGURED){fbApp=initializeApp(firebaseConfig);auth=getAuth(fbApp);fdb=getFirestore(fbApp)}
+const STANDALONE=(()=>{try{return matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}catch(e){return false}})();
+if(CONFIGURED){fbApp=initializeApp(firebaseConfig);auth=getAuth(fbApp);
+  try{fdb=STANDALONE?initializeFirestore(fbApp,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})}):getFirestore(fbApp)}catch(e){fdb=getFirestore(fbApp)}}
 let ME=null,unsubs=[],lgNote='';
 const isAdmin=()=>!!ME&&ME.role==='admin';
 const errMsg=e=>({'permission-denied':'you do not have permission for this','unavailable':'no connection to the database — check the internet connection'}[e&&e.code]||((e&&(e.code||e.message))||'error'));
-async function put(c,obj){obj.updatedAt=new Date().toISOString();try{await setDoc(doc(fdb,c,obj.id),clean(obj))}catch(e){toast('Save failed: '+errMsg(e));throw e}}
+const offline=()=>{if(navigator.onLine===false){toast('You\u2019re offline. Connect to the internet and try again.');return true}return false};
+async function put(c,obj){if(offline())throw new Error('offline');obj.updatedAt=new Date().toISOString();try{await setDoc(doc(fdb,c,obj.id),clean(obj))}catch(e){toast('Save failed: '+errMsg(e));throw e}}
 async function del(c,id){try{await deleteDoc(doc(fdb,c,id))}catch(e){toast('Delete failed: '+errMsg(e));throw e}}
 function setBanner(t){$('#banner').textContent=t}
 function sub(c,ref){
@@ -396,21 +418,27 @@ function download(filename,data){
 /* ---------- render ---------- */
 let VIEW='dashboard',pendingRender=false,rq=0;
 const RAIL_A=[['dashboard','Dashboard'],['employees','Employees'],['leave','Leave'],['payroll','Payroll & WPS'],['loans','Loans & advances'],['settlement','End of service'],['companies','Companies'],['logins','Portal logins'],['setup','Setup & data'],['law','Labour law guide']];
-const RAIL_E=[['my-leave','My leave'],['my-payslips','My payslips'],['my-profile','My profile']];
+const IC={
+ 'my-leave':'<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M8 14h3"/>',
+ 'my-payslips':'<path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+ 'my-docs':'<path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5M8.5 13h7M8.5 17h5"/>',
+ 'my-profile':'<circle cx="12" cy="8" r="4"/><path d="M4 21c1.2-4 4.3-6 8-6s6.8 2 8 6"/>'};
+const icon=k=>IC[k]?`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`:'';
+const RAIL_E=[['my-leave','Leave'],['my-payslips','Payslips'],['my-docs','Documents'],['my-profile','Profile']];
 const views=()=>isAdmin()?V:PV;
 const defView=()=>isAdmin()?'dashboard':'my-leave';
 function schedule(){Sv++;cancelAnimationFrame(rq);rq=requestAnimationFrame(()=>{if(!ME)return;const a=document.activeElement;if((a&&$('#view').contains(a)&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))||ov.classList.contains('on')){pendingRender=true;renderChrome();return}render()})}
 document.addEventListener('focusout',()=>{if(pendingRender)setTimeout(()=>{const a=document.activeElement;if(pendingRender&&!(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))&&!ov.classList.contains('on'))render()},50)});
 function renderChrome(){
   if(!ME)return;
-  const adm=isAdmin();
+  const adm=isAdmin();document.body.classList.toggle('emp',!adm);
   const p=adm?Object.values(S.leaves).filter(l=>l.status==='pending'&&(CO==='all'||(S.employees[l.empId]||{}).companyId===CO)).length:0;
   $('#rail').innerHTML=`<div class="brand"><img src="logos/citycube-mark.png" alt=""><div>${esc(APP_NAME)}<small>${adm?'UAE Labour Law · multi-company':'Employee portal'}</small></div></div>`+
-    (adm?RAIL_A:RAIL_E).map(([k,n])=>`<a href="#${k}" class="${k===VIEW?'on':''}">${esc(n)}${k==='leave'&&p?` <span class="n">${p}</span>`:''}</a>`).join('')+
+    (adm?RAIL_A:RAIL_E).map(([k,n])=>`<a href="#${k}" class="${k===VIEW?'on':''}">${adm?'':icon(k)}<span>${esc(n)}</span>${k==='leave'&&p?` <span class="n">${p}</span>`:''}</a>`).join('')+
     `<div class="foot">${adm?'Federal Decree-Law 33/2021 as amended by FDL 9/2024. Calculations are guidance; confirm with MOHRE or counsel.':'Questions about your record? Contact HR.'}</div>`;
   if(adm){const list=cos();if(CO!=='all'&&!S.companies[CO])CO='all';
     $('#cos').innerHTML=`<button class="chip ${CO==='all'?'on':''}" data-act="co" data-id="all">All companies</button>`+list.map(c=>`<button class="chip ${CO===c.id?'on':''}" data-act="co" data-id="${esc(c.id)}">${logoImg(c,22)}${esc(c.short||c.name)}</button>`).join('')}
-  else{const e=S.employees[ME.empId],c=e&&S.companies[e.companyId];$('#cos').innerHTML=c?`<span class="chip on">${logoImg(c,22)}${esc(c.name)}</span>`:''}
+  else{const e=S.employees[ME.empId],c=e&&S.companies[e.companyId];$('#cos').innerHTML=c?`<span class="chip on" title="${esc(c.name)}">${logoImg(c,22)}${esc(c.short||c.name)}</span>`:''}
 }
 function render(){pendingRender=false;if(!ME)return;renderChrome();const VV=views(),f=VV[VIEW]||VV[defView()];$('#view').innerHTML=f();AFTER[VIEW]&&AFTER[VIEW]()}
 function route(){if(!ME)return;const h=location.hash.slice(1);VIEW=views()[h]?h:defView();render();window.scrollTo(0,0)}
@@ -802,10 +830,11 @@ ACT.fileView=async d=>{const f=S.files[d.id];if(!f)return;const back=isAdmin()?f
     $('#mb').innerHTML=(/^image\//.test(f.mime)?`<img src="${viewUrl}" style="max-width:100%;border-radius:8px;background:#fff" alt="">`:f.mime==='application/pdf'?`<iframe src="${viewUrl}" style="width:100%;height:70vh;border:0;border-radius:8px;background:#fff" title="Document"></iframe>`:'<p>No preview for this file type — download it to open.</p>')+`<div class="row" style="margin-top:12px"><a class="btn pri" href="${viewUrl}" download="${esc(f.name)}">Download</a></div>`}
   catch(e){if($('#mb'))$('#mb').innerHTML='<p class="warnl">Could not load this document: '+esc(e&&e.code?errMsg(e):(e&&e.message)||'error')+'</p>'}};
 ACT.fileUp=d=>{const adm=isAdmin(),e=S.employees[adm?d.emp:ME.empId];if(!e)return;
-  openModal(adm?'Upload document — '+e.name:'Upload a renewed document',`<div class="form" id="uf"><label class="f"><span class="req">Document type</span><select data-k="docType">${DOC_TYPES.map(([k,n])=>`<option value="${k}">${esc(n)}</option>`).join('')}</select></label><label class="f">Expiry date<input type="date" data-k="expiry"></label><label class="f wide">Note<input data-k="note" maxlength="200"></label><label class="f wide"><span class="req">File — PDF, JPG or PNG, up to 5 MB (photos are compressed)</span><input type="file" id="ufFile" accept="application/pdf,image/*"></label></div>
+  openModal(adm?'Upload document — '+e.name:'Upload a renewed document',`<div class="form" id="uf"><label class="f"><span class="req">Document type</span><select data-k="docType">${DOC_TYPES.map(([k,n])=>`<option value="${k}">${esc(n)}</option>`).join('')}</select></label><label class="f">Expiry date<input type="date" data-k="expiry"></label><label class="f wide">Note<input data-k="note" maxlength="200"></label><div class="f wide"><span class="req">Document</span><div class="upl">${touch()?'<label class="btn pri">Take photo<input type="file" id="ufCam" accept="image/*" capture="environment" hidden></label>':''}<label class="btn">Choose file<input type="file" id="ufFile" accept="application/pdf,image/*" hidden></label><span id="ufName" class="small mut">No file chosen</span></div><span class="small mut">PDF, JPG or PNG, up to 5 MB. Photos are compressed automatically — lay the document flat in good light.</span></div></div>
    <p class="small mut">${adm?'An expiry date entered for a passport, visa, Emirates ID, work permit, contract, health insurance or ILOE also updates the employee record and its expiry alerts.':'HR will check the document and update your record.'}</p><div id="ufMsg" class="small"></div>`,
    `<button class="btn" data-act="close">Cancel</button><button class="btn pri" id="ufGo">Upload</button>`);
-  $('#ufGo').onclick=async()=>{const v=readForm($('#uf')),file=$('#ufFile').files[0];if(!file){$('#ufMsg').textContent='Choose a file.';return}
+  let picked=null;['#ufCam','#ufFile'].forEach(sel=>{const i=$(sel);if(i)i.onchange=()=>{if(i.files[0]){picked=i.files[0];$('#ufName').textContent=picked.name+' · '+kb(picked.size)}}});
+  $('#ufGo').onclick=async()=>{const v=readForm($('#uf')),file=picked;if(!file){$('#ufMsg').textContent='Take a photo or choose a file.';return}
     $('#ufGo').disabled=true;$('#ufMsg').textContent='Uploading…';
     try{await saveFile({empId:e.id,docType:v.docType,expiry:v.expiry||'',note:v.note||'',status:adm?'ok':'review'},file);
       const k=(DT[v.docType]||{}).f;if(adm&&v.expiry&&k)await put('employees',Object.assign(clean(S.employees[e.id]),{[k]:v.expiry}));
@@ -853,7 +882,7 @@ const waitMsg='<div class="panel empty">Loading your record…</div>';
 PV['my-leave']=()=>{
   const e=myEmp();if(!e)return waitMsg;
   const t=today(),lb=annualBal(e,t),su=sickUsed(e,t),ls=Object.values(S.leaves).sort((a,b)=>a.from<b.from?1:-1);
-  return`<div class="ph"><h1>Hello, ${esc(String(e.name||'').split(' ')[0])}</h1><button class="btn acc" data-act="myApply">Request leave</button></div>
+  return`${installCard(false)}<div class="ph"><h1>Hello, ${esc(String(e.name||'').split(' ')[0])}</h1><button class="btn acc" data-act="myApply">Request leave</button></div>
   <div class="kpis"><div class="kpi"><span>Annual leave balance</span><b>${lb.bal} days</b></div><div class="kpi"><span>Earned to date</span><b>${lb.acc}</b></div><div class="kpi"><span>Taken / booked</span><b>${lb.taken} / ${lb.booked}</b></div><div class="kpi"><span>Sick leave used this year</span><b>${su} / 90</b></div>${inProb(e,t)?`<div class="kpi hot"><span>Probation ends</span><b>${fmtD(probEnd(e))}</b></div>`:''}</div>
   ${netService(e,t)<183?'<p class="small mut">Annual leave is earned after 6 months of service: 2 days a month until your first year, then 30 days a year.</p>':''}
   <div class="panel"><div class="ph"><h2>My requests</h2></div>${ls.length?`<div class="scroll"><table class="stack"><thead><tr><th>Type</th><th>From</th><th>To</th><th class="num">Days</th><th>Status</th><th></th></tr></thead><tbody>${ls.map(l=>`<tr><td>${esc((LT[l.type]||{}).n)}${l.note?`<div class="small mut">${esc(l.note)}</div>`:''}</td><td>${fmtD(l.from)}</td><td>${fmtD(l.to)}</td><td class="num">${counted(l,e).length}</td><td>${stTag(l.status)}${l.hrNote?`<div class="small mut">${esc(l.hrNote)}</div>`:''}</td><td>${l.status==='pending'?`<button class="btn sm" data-act="myCancel" data-id="${esc(l.id)}">Cancel</button>`:''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">You have not requested any leave yet.</div>'}</div>
@@ -880,14 +909,21 @@ PV['my-payslips']=()=>{
 ACT.mySlip=d=>{const p=S.payslips[d.id];if(!p)return;const cco=S.companies[p.companyId],h=slipHTML(p.line,p.co||{},p.month,logoOf(cco));
   openModal('Payslip — '+monthName(p.month),`<div style="background:#fff;color:#111;border-radius:8px;padding:8px;overflow:auto">${h}</div>`,`<button class="btn pri" id="slipDl">Download</button>`);
   $('#slipDl').onclick=async()=>download(`payslip-${p.month}.html`,`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Payslip ${esc(p.month)}</title></head><body>${slipHTML(p.line,p.co||{},p.month,await logoData(cco))}</body></html>`)};
+PV['my-docs']=()=>{
+  const e=myEmp();if(!e)return waitMsg;const t=today(),st=docStatus(e);
+  const docs=[['Passport',e.passportNo,e.passportExp],['Residence visa',e.visaNo,e.visaExp],['Emirates ID',e.eidNo,e.eidExp],['Work permit',e.permitNo,e.permitExp],['Health insurance',e.insurer,e.insExp],['ILOE insurance','',e.iloeExp]].filter(([n])=>!e.pension||['Passport','Emirates ID'].includes(n));
+  return`<div class="ph"><h1>My documents</h1><button class="btn pri" data-act="fileUp">Upload renewed document</button></div>
+  ${st.expired.length||st.due.length?`<div class="panel install"><div><b>${st.expired.length?'Expired: '+esc(st.expired.join(', ')):'Renew soon: '+esc(st.due.join(', '))}</b><div class="small mut">Renew it, then upload a photo of the new document so HR can update your record.</div></div></div>`:''}
+  <div class="panel"><div class="scroll"><table class="stack"><thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead><tbody>${docs.map(([n,no,x])=>{const dd=x?diff(t,x):null;return`<tr><td>${n}</td><td>${esc(no||'—')}</td><td>${fmtD(x)}</td><td>${!x?'<span class="tag">not on file</span>':dd<0?'<span class="tag bad">expired</span>':dd<=60?`<span class="tag acc">${dd} days left</span>`:'<span class="tag ok">valid</span>'}</td></tr>`}).join('')}</tbody></table></div><p class="small mut">If anything here is wrong, tell HR.</p></div>
+  <div class="panel"><h2 style="margin-bottom:10px">My files</h2>${filesTable(e.id,false)}</div>`;
+};
 PV['my-profile']=()=>{
   const e=myEmp();if(!e)return waitMsg;const t=today();
-  const docs=[['Passport',e.passportNo,e.passportExp],['Residence visa',e.visaNo,e.visaExp],['Emirates ID',e.eidNo,e.eidExp],['Work permit',e.permitNo,e.permitExp],['Health insurance',e.insurer,e.insExp],['ILOE insurance','',e.iloeExp]];
-  return`<div class="ph"><span class="nm">${avatar(e,56)}<h1>My profile</h1></span></div><div class="grid g2">
-  <div class="panel"><h2 style="margin-bottom:10px">Employment</h2><dl class="dl"><dt>Employee no.</dt><dd>${esc(e.code)}</dd><dt>Company</dt><dd>${esc(coName(e.companyId))}</dd><dt>Designation</dt><dd>${esc(e.designation||'—')}</dd><dt>Department</dt><dd>${esc(e.department||'—')}</dd><dt>Joined</dt><dd>${fmtD(e.join)}</dd><dt>Contract ends</dt><dd>${fmtD(e.contractEnd)}</dd><dt>Notice period</dt><dd>${num(e.notice)||30} days</dd><dt>Service</dt><dd>${(netService(e,t)/365).toFixed(1)} years</dd><dt>Salary account</dt><dd>${e.iban?'•••• '+esc(e.iban.slice(-4)):'—'}</dd></dl></div>
-  <div class="panel"><h2 style="margin-bottom:10px">My documents</h2><table class="stack"><thead><tr><th>Document</th><th>Number</th><th>Expiry</th><th>Status</th></tr></thead><tbody>${docs.map(([n,no,x])=>{const dd=x?diff(t,x):null;return`<tr><td>${n}</td><td>${esc(no||'—')}</td><td>${fmtD(x)}</td><td>${!x?'<span class="tag">not on file</span>':dd<0?'<span class="tag bad">expired</span>':dd<=60?`<span class="tag acc">${dd} days left</span>`:'<span class="tag ok">valid</span>'}</td></tr>`}).join('')}</tbody></table><p class="small mut">Renew documents before they expire and upload the new copy below. If anything here is wrong, tell HR.</p></div></div>
-  <div class="panel"><div class="ph"><h2>My document files</h2><button class="btn pri" data-act="fileUp">Upload renewed document</button></div>${filesTable(e.id,false)}</div>
-  <div class="panel"><h2 style="margin-bottom:10px">Change password</h2><div class="form" id="pwf"><label class="f">Current password<input type="password" id="pw0" autocomplete="current-password"></label><label class="f">New password (8+ characters)<input type="password" id="pw1" autocomplete="new-password"></label><label class="f">Repeat new password<input type="password" id="pw2" autocomplete="new-password"></label></div><div class="row" style="margin-top:12px"><button class="btn pri" data-act="myPw">Change password</button><span id="pwMsg" class="small"></span></div></div>`;
+  return`<div class="ph"><span class="nm">${avatar(e,56)}<span><h1>${esc(e.name)}</h1><span class="small mut">${esc([e.code,e.designation].filter(Boolean).join(' · '))}</span></span></span></div>
+  ${installCard(true)}
+  <div class="grid g2"><div class="panel"><h2 style="margin-bottom:10px">Employment</h2><dl class="dl"><dt>Employee no.</dt><dd>${esc(e.code)}</dd><dt>Company</dt><dd>${esc(coName(e.companyId))}</dd><dt>Designation</dt><dd>${esc(e.designation||'—')}</dd><dt>Department</dt><dd>${esc(e.department||'—')}</dd><dt>Joined</dt><dd>${fmtD(e.join)}</dd><dt>Contract ends</dt><dd>${fmtD(e.contractEnd)}</dd><dt>Notice period</dt><dd>${num(e.notice)||30} days</dd><dt>Service</dt><dd>${(netService(e,t)/365).toFixed(1)} years</dd><dt>Salary account</dt><dd>${e.iban?'•••• '+esc(e.iban.slice(-4)):'—'}</dd></dl></div>
+  <div class="panel"><h2 style="margin-bottom:10px">Change password</h2><div class="form" id="pwf"><label class="f">Current password<input type="password" id="pw0" autocomplete="current-password"></label><label class="f">New password (8+ characters)<input type="password" id="pw1" autocomplete="new-password"></label><label class="f">Repeat new password<input type="password" id="pw2" autocomplete="new-password"></label></div><div class="row" style="margin-top:12px"><button class="btn pri" data-act="myPw">Change password</button><span id="pwMsg" class="small"></span></div></div></div>
+  <div class="row" style="margin-top:4px"><button class="btn" data-act="logout">Sign out</button></div>`;
 };
 ACT.myPw=async()=>{const a=$('#pw0').value,b=$('#pw1').value,c=$('#pw2').value,m=$('#pwMsg');
   if(b.length<8){m.textContent='The new password needs at least 8 characters.';return}if(b!==c){m.textContent='The new passwords do not match.';return}
@@ -937,7 +973,27 @@ ACT.adminNew=()=>{
   $('#adGo').onclick=async()=>{const v=readForm($('#adf')),em=String(v.email).toLowerCase();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){$('#adErr').textContent='Enter a valid email.';return}if(String(v.pw).length<8){$('#adErr').textContent='Password needs at least 8 characters.';return}
     $('#adGo').disabled=true;try{const id=await makeAccount(em,v.pw);await put('users',{id,role:'admin',username:em,active:true,created:today(),createdBy:ME.uid});showCreds(em,em,v.pw)}catch(x){$('#adErr').textContent=x&&String(x.code).startsWith('auth/')?authErr(x):errMsg(x);$('#adGo').disabled=false}};
 };
-ACT.logout=()=>{if(auth)signOut(auth)};
+ACT.logout=async()=>{if(!auth)return;try{await signOut(auth)}catch(e){}
+  if(STANDALONE){try{await terminate(fdb);await clearIndexedDbPersistence(fdb)}catch(e){}location.reload()}};
+const touch=()=>{try{return matchMedia('(pointer:coarse)').matches||navigator.maxTouchPoints>0||'ontouchstart' in window}catch(e){return false}};
+const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+let installEvt=null;
+window.addEventListener('beforeinstallprompt',ev=>{ev.preventDefault();installEvt=ev;schedule()});
+window.addEventListener('appinstalled',()=>{installEvt=null;toast('CityCube HR installed');schedule()});
+function installCard(always){
+  if(STANDALONE)return'';
+  if(!always){try{if(localStorage.getItem('hr-install-x'))return''}catch(e){}}
+  const x=always?'':'<button class="btn sm" data-act="installX">Not now</button>';
+  if(installEvt)return`<div class="panel install"><div><b>Install the CityCube HR app</b><div class="small mut">Open it from your home screen like any other app.</div></div><div class="row"><button class="btn pri" data-act="install">Install app</button>${x}</div></div>`;
+  if(isIOS())return`<div class="panel install"><div><b>Add CityCube HR to your iPhone</b><div class="small mut">In Safari, tap the Share button (square with an arrow), then <b>Add to Home Screen</b>.</div></div>${x}</div>`;
+  if(/android/i.test(navigator.userAgent))return`<div class="panel install"><div><b>Add CityCube HR to your phone</b><div class="small mut">In Chrome, open the menu ⋮ and tap <b>Install app</b> or <b>Add to Home screen</b>.</div></div>${x}</div>`;
+  return always?`<div class="panel small mut">Tip: open this page on your phone and add it to the home screen to use CityCube HR as an app.</div>`:'';
+}
+ACT.install=async()=>{if(!installEvt)return;installEvt.prompt();try{await installEvt.userChoice}catch(e){}installEvt=null;render()};
+ACT.installX=()=>{try{localStorage.setItem('hr-install-x','1')}catch(e){}render()};
+window.addEventListener('offline',()=>setBanner('You\u2019re offline — showing the last saved information. Changes need an internet connection.'));
+window.addEventListener('online',()=>setBanner(''));
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 ACT.seed=async()=>{if(cos().length)return;
   const cs=[['citycube-wh','CityCube Warehousing & Storage Management & Operation LLC','CityCube Warehousing','LLC','mainland'],['citycube-gt','CityCube General Trading FZ LLC','CityCube Trading','FZ-LLC','freezone'],['wahid-karak','Wahid Karak Cafe LLC','Wahid Karak Cafe','LLC','mainland']];
   try{for(const[i,c]of cs.entries())await put('companies',{id:c[0],name:c[1],short:c[2],form:c[3],zone:c[4],emirate:'Dubai',wps:true,weekend:[0,6],order:i+1});

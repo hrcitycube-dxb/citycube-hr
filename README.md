@@ -25,6 +25,7 @@ data even if they tamper with the web page.
 | `firebase-config.js` | Your Firebase project settings. **Edit this.** |
 | `firestore.rules` | Database security rules. Paste into the Firebase console. |
 | `firebase.json`, `firestore.indexes.json` | Only needed if you deploy with the Firebase CLI |
+| `manifest.webmanifest`, `sw.js` | Make the site installable as a phone app and let it open offline |
 | `logos/` | CityCube mark (app logo and favicon) and the CityCube Warehousing and CityCube General Trading logos. Upload this folder too. |
 
 ---
@@ -64,7 +65,7 @@ data even if they tamper with the web page.
 1. Create a GitHub repository, e.g. `citycube-hr`. A **private** repository needs a paid GitHub plan for Pages;
    a public one is fine because the code and config contain no secrets and the rules protect the data.
    **Never commit backup files or exports to the repository.**
-2. Upload `index.html`, `firebase-config.js`, `firestore.rules`, `firebase.json`, `README.md` and the whole `logos` folder.
+2. Upload **all** files: `index.html`, `firebase-config.js`, `manifest.webmanifest`, `sw.js`, `firestore.rules`, `firestore.indexes.json`, `firebase.json`, `README.md` and the whole `logos` folder.
 3. **Settings → Pages → Build and deployment → Source: Deploy from a branch → `main` / `(root)` → Save.**
 4. After a minute the site is live at `https://<your-github-name>.github.io/citycube-hr/`.
 
@@ -97,6 +98,25 @@ with a new password, and the old login stops working at once.
 
 **Leavers:** saving an end-of-service settlement disables that employee's login automatically.
 You can also disable or re-enable any login under **Portal logins**.
+
+## The staff mobile app
+The site installs as an app on staff phones. There's nothing to download from an app store.
+
+**What staff do (once):**
+- **iPhone:** open the link in **Safari**, tap **Share** (square with an arrow), then **Add to Home Screen**.
+- **Android:** open the link in **Chrome**, then tap **Install app** on the banner, or **⋮ → Install app / Add to Home screen**.
+
+The CityCube HR icon then appears on the home screen and opens full-screen with four tabs: **Leave**, **Payslips**,
+**Documents** and **Profile**. Staff stay signed in on their own phone until they tap **Sign out**.
+
+- **Documents → Upload renewed document → Take photo** opens the phone camera. Staff should lay the document
+  flat in good light. The photo is compressed and sent to HR for checking.
+- **Offline:** the app still opens with a weak or no connection and shows the last saved leave, payslips and
+  documents. Requests and uploads need a connection; the app says so clearly. Signing out clears the saved copy
+  from the phone.
+- **Updates:** replace the files on GitHub as usual. Phones pick up the new version the next time the app is
+  opened online. If you change `sw.js` itself, raise `VERSION` at the top of it (e.g. `cc-hr-v2`).
+- **Not included on the free plan:** push notifications. Staff see approvals the next time they open the app.
 
 ## How leave requests work
 1. The employee signs in → **My leave** → **Request leave**. The form shows their balance and warns about

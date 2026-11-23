@@ -1,0 +1,17 @@
+{
+  "name": "CityCube Group HR",
+  "short_name": "CityCube HR",
+  "description": "Leave, payslips and documents for CityCube Group staff.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#12305e",
+  "icons": [
+    { "src": "logos/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "logos/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "logos/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
